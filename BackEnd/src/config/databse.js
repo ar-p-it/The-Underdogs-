@@ -1,4 +1,4 @@
-const URI = "mongodb+srv://arpit:ty8NJcOQ6FGtn5BP@rubix.2surb5z.mongodb.net/Rigved";
+const URI = "mongodb+srv://mainarpithoon_db_user:acv1e31GwefrJk99@cluster0.budupyw.mongodb.net/UnderDogs";
 
 const mongoose = require("mongoose");
 const connectDB = async () => {
