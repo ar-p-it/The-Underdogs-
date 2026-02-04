@@ -42,7 +42,7 @@ export default function JoinGroupModal({ open, onClose, onJoined }) {
   return (
     <dialog open={open} className="modal">
       <div className="modal-box bg-white text-black">
-        <h3 className="font-bold text-lg mb-4">Join a group</h3>
+        <h3 className="font-bold text-lg mb-4 ">Join a group</h3>
         <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4">
           <input
             type="text"

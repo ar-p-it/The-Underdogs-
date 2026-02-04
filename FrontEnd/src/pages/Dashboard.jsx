@@ -20,8 +20,8 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold">Dashboard</h1>
           <div className="flex items-center gap-2">
             {/* <button className="btn btn-neutral">Add Expense</button> */}
-            <button className="btn btn-primary" onClick={() => setIsCreateOpen(true)}>Create New Group</button>
-            <button className="btn btn-outline" onClick={() => setIsJoinOpen(true)}>Join Group</button>
+            <button className="btn btn-primary bg-emerald-500 border-none text-white" onClick={() => setIsCreateOpen(true)}>Create New Group</button>
+            <button className="btn btn-primary bg-emerald-500 border-none text-white" onClick={() => setIsJoinOpen(true)}>Join Group</button>
           </div>
         </div>
 

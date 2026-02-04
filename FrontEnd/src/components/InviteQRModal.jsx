@@ -15,7 +15,7 @@ export default function InviteQRModal({ open, groupId, groupName, onClose }) {
       await navigator.clipboard.writeText(inviteUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch (e) {
+    } catch {
       // noop
     }
   };
