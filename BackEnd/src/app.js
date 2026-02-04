@@ -14,9 +14,10 @@ app.get("/", (req, res) => {
 });
 
 const authRouter = require("./routes/auth");
-
+const groupsRouter = require("./routes/groups");
 
 app.use("/", authRouter);
+app.use("/groups", groupsRouter);
 
 // connect DB then start server
 connectDB()

@@ -53,38 +53,34 @@ const userSchema = new mongoose.Schema(
       },
     },
 
-    about: {
-      type: String,
-      default: "Hey there 👋 I am using DevTinder",
-      maxlength: 300,
-    },
-
-    interests: {
-      type: [String],
-      default: [],
-    },
-
     location: {
       city: String,
       country: String,
-    },
-
-    lookingFor: {
-      type: String,
-      enum: ["dating", "friendship", "serious"],
-      default: "dating",
-    },
-
-    height: {
-      type: Number, // cm
     },
 
     verified: {
       type: Boolean,
       default: false,
     },
+
+    finternetWalletId: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
+
+    walletSecretEncrypted: {
+      type: String,
+    },
+
+    primaryWallet: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Wallet",
+    },
   },
   { timestamps: true }
 );
+
+userSchema.index({ finternetWalletId: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model("User", userSchema);
