@@ -53,6 +53,9 @@ export default function MyGroups() {
                     <p className="opacity-70">{g.description || 'No description'}</p>
                     <div className="mt-2 text-sm opacity-70">Deposit per person: {g.depositAmountPerPerson} {g.currency}</div>
                     <div className="mt-1 text-sm opacity-70">Status: {g.status}</div>
+                    <div className="mt-3">
+                      <a href={`/groups/${g._id}`} className="btn btn-primary bg-emerald-500 border-none">Open Group</a>
+                    </div>
                   </div>
                 )}
               </div>

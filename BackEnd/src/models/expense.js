@@ -37,6 +37,19 @@ const expenseSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    splitMethod: {
+      type: String,
+      enum: ["equal", "exact", "percent", "shares"],
+      default: "equal",
+    },
+    splits: [
+      {
+        user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+        amount: { type: Number, required: true },
+        percent: { type: Number },
+        shares: { type: Number },
+      },
+    ],
     merchant: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Merchant",

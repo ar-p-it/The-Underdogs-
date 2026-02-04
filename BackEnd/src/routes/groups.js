@@ -6,8 +6,14 @@ const User = require("../models/user");
 const Wallet = require("../models/wallet");
 
 const groupsRouter = express.Router();
+// Debug logging to verify requests reach this router
+groupsRouter.use((req, _res, next) => {
+  console.log(`[GroupsRouter] ${req.method} ${req.originalUrl}`);
+  next();
+});
+const expenseController = require('../controllers/expenseController');
 
-// Create a new event/group
+// 1. Create a new event/group
 groupsRouter.post("/", userAuth, async (req, res) => {
   try {
     const { name, description, depositAmountPerPerson, currency } = req.body;
@@ -42,6 +48,7 @@ groupsRouter.post("/", userAuth, async (req, res) => {
       description,
       admin: req.user._id,
       depositAmountPerPerson,
+      depositCurrency: currency || "INR",
       currency: currency || "INR",
       finternetWalletId: groupFinternetId,
       poolWallet: poolWallet._id,
@@ -63,18 +70,6 @@ groupsRouter.post("/", userAuth, async (req, res) => {
       $addToSet: { groups: group._id },
     });
 
-    // Log created group details to server terminal
-    console.log("[Groups] Created group:", {
-      id: group._id?.toString?.() || group._id,
-      name: group.name,
-      description: group.description,
-      admin: req.user._id?.toString?.() || req.user._id,
-      depositAmountPerPerson: group.depositAmountPerPerson,
-      currency: group.currency,
-      participants: group.participants?.length,
-      status: group.status,
-    });
-
     return res.status(201).json({
       success: true,
       message: "Group created",
@@ -88,7 +83,7 @@ groupsRouter.post("/", userAuth, async (req, res) => {
   }
 });
 
-// Get groups for current user (created or joined)
+// 2. Get groups for current user (created or joined)
 groupsRouter.get("/my", userAuth, async (req, res) => {
   try {
     const userId = req.user._id;
@@ -107,7 +102,7 @@ groupsRouter.get("/my", userAuth, async (req, res) => {
   }
 });
 
-// Join a group by ID (from invite link)
+// 3. Join a group by ID (from invite link)
 groupsRouter.post("/join", userAuth, async (req, res) => {
   try {
     const { groupId } = req.body;
@@ -142,4 +137,23 @@ groupsRouter.post("/join", userAuth, async (req, res) => {
   }
 });
 
+// 4. Group-scoped expense and balances endpoints
+groupsRouter.get('/:groupId/expenses', userAuth, expenseController.getGroupExpenses);
+groupsRouter.post('/:groupId/expenses', userAuth, expenseController.postExpense);
+groupsRouter.get('/:groupId/balances', userAuth, expenseController.getGroupBalances);
+
+// 5. Get a single group by id (with participants)
+// (Must come AFTER specific routes like /my or /join)
+groupsRouter.get('/:groupId', userAuth, async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const group = await Group.findById(groupId).populate('participants.user', 'firstName lastName emailId');
+    if (!group) return res.status(404).json({ success: false, message: 'Group not found' });
+    res.json({ success: true, group });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// MOVE THIS TO THE VERY END
 module.exports = groupsRouter;

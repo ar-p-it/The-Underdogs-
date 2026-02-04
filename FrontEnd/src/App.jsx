@@ -5,6 +5,7 @@ import Signup from "./pages/Signup.jsx";
 import Login from "./pages/Login.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import MyGroups from "./pages/MyGroups.jsx";
+import GroupLedger from "./pages/GroupLedger.jsx";
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
         <Route path="/signup" element={<Signup />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/my-groups" element={<MyGroups />} />
+        <Route path="/groups/:groupId" element={<GroupLedger />} />
         <Route
           path="*"
           element={

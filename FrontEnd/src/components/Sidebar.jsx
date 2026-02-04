@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 
 export default function Sidebar() {
   const { pathname } = useLocation();
-  const itemClass = (path) => `btn btn-ghost justify-start ${pathname === path ? 'text-emerald-600 font-semibold' : 'text-black'}`;
+  const itemClass = (path) => `btn btn-ghost justify-start ${pathname === path ? 'text-emerald-600 font-semibold' : 'text-emerald-600 font-semibold'}`;
   return (
     <aside className="w-64 shrink-0 border-r bg-white">
       <div className="p-4">
