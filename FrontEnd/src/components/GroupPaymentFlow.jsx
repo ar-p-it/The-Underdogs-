@@ -1,277 +1,192 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import axios from "axios";
 
 export default function GroupPaymentFlow({ groupId }) {
-  const [group, setGroup] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [paymentUrl, setPaymentUrl] = useState(null);
-  const [contributionAmount, setContributionAmount] = useState("");
-  const [poolStatus, setPoolStatus] = useState(null);
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [poolAmount, setPoolAmount] = useState("");
+  const [numParticipants, setNumParticipants] = useState("");
+  const [paymentUrl, setPaymentUrl] = useState("");
+  const [intentId, setIntentId] = useState("");
+  const [error, setError] = useState("");
 
   const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:7777";
 
-  const loadGroup = async () => {
-    try {
-      const res = await axios.get(`${API_BASE}/groups/${groupId}`, {
-        withCredentials: true,
-      });
-      setGroup(res.data.group);
-      setLoading(false);
-    } catch (err) {
-      console.error("Failed to load group:", err);
-      setLoading(false);
-    }
-  };
-
-  const handleCreatePaymentIntent = async () => {
-    try {
-      const res = await axios.post(
-        `${API_BASE}/groups/${groupId}/create-payment-intent`,
-        { totalAmount: group.poolAmount, numParticipants: 3 },
-        { withCredentials: true },
-      );
-      setPaymentUrl(res.data.poolUrl);
-      loadGroup();
-    } catch (err) {
-      console.error("Failed to create payment intent:", err);
-      alert("Error creating payment intent: " + err.response?.data?.message);
-    }
-  };
-
-  const handleContribute = async () => {
-    if (!contributionAmount || parseFloat(contributionAmount) <= 0) {
-      alert("Please enter a valid contribution amount");
+  const handleCreateIntent = async () => {
+    if (!poolAmount || !numParticipants) {
+      setError("Please fill in all fields");
       return;
     }
 
+    setLoading(true);
+    setError("");
+
     try {
-      const res = await axios.post(
-        `${API_BASE}/groups/${groupId}/contribute`,
-        { contributionAmount: parseFloat(contributionAmount) },
+      console.log("[Frontend] Creating payment intent...");
+      const response = await axios.post(
+        `${API_BASE}/groups/${groupId}/create-payment-intent`,
+        {
+          totalAmount: parseInt(poolAmount),
+          numParticipants: parseInt(numParticipants),
+          timestamp: Date.now(), // Force unique request each time
+        },
         { withCredentials: true },
       );
-      setPaymentUrl(res.data.paymentUrl);
-      setContributionAmount("");
-      loadGroup();
+
+      console.log("[Frontend] Intent created:", response.data);
+      setIntentId(response.data.intentId);
+      setPaymentUrl(response.data.poolUrl);
+      setStep(2);
     } catch (err) {
-      console.error("Failed to register contribution:", err);
-      alert("Error: " + err.response?.data?.message);
+      console.error("[Frontend Error]", err.response?.data || err.message);
+      setError(err.response?.data?.message || "Failed to create intent");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleVerifyPool = async () => {
-    try {
-      const res = await axios.post(
-        `${API_BASE}/groups/${groupId}/verify-pool`,
-        {},
-        { withCredentials: true },
-      );
-      setPoolStatus(res.data);
-      loadGroup();
-    } catch (err) {
-      console.error("Failed to verify pool:", err);
-      alert("Error: " + err.response?.data?.message);
-    }
+  const handleCreateNewIntent = () => {
+    // Reset all form fields and step
+    setStep(1);
+    setPoolAmount("");
+    setNumParticipants("");
+    setIntentId("");
+    setPaymentUrl("");
+    setError("");
   };
-
-  useEffect(() => {
-    loadGroup();
-  }, [groupId]);
-
-  if (loading) {
-    return <div className="text-center py-8">Loading group...</div>;
-  }
-
-  if (!group) {
-    return <div className="alert alert-error">Group not found</div>;
-  }
-
-  const totalContributions =
-    group.participants?.reduce((sum, p) => sum + (p.depositAmount || 0), 0) ||
-    0;
-
-  const contributorsCount =
-    group.participants?.filter((p) => p.depositAmount > 0).length || 0;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="card bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg">
-        <div className="card-body">
-          <h1 className="card-title text-2xl">{group.name}</h1>
-          <p className="opacity-90">{group.description}</p>
-        </div>
-      </div>
+    <div
+      style={{ padding: "20px", border: "1px solid #ddd", borderRadius: "8px" }}
+    >
+      <h2>🏊 Group Payment Pool</h2>
 
-      {/* Pool Status Card */}
-      <div className="card bg-white shadow">
-        <div className="card-body">
-          <h2 className="card-title mb-4">💰 Pool Status</h2>
-
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div className="bg-base-200 p-4 rounded-lg">
-              <p className="text-sm opacity-70">Pool Target</p>
-              <p className="text-2xl font-bold">
-                {group.poolAmount} {group.currency}
-              </p>
-            </div>
-            <div className="bg-base-200 p-4 rounded-lg">
-              <p className="text-sm opacity-70">Total Contributed</p>
-              <p className="text-2xl font-bold text-success">
-                {totalContributions} {group.currency}
-              </p>
-            </div>
-          </div>
-
-          {/* Progress Bar */}
-          <div className="mb-4">
-            <p className="text-sm mb-2">
-              Progress:{" "}
-              {((totalContributions / group.poolAmount) * 100).toFixed(0)}%
-            </p>
-            <progress
-              className="progress progress-success w-full"
-              value={totalContributions}
-              max={group.poolAmount}
+      {/* Step 1: Create Intent */}
+      {step === 1 && (
+        <div>
+          <h3>Step 1: Initialize Payment Pool</h3>
+          <div style={{ marginBottom: "10px" }}>
+            <label>Total Pool Amount (USDC): </label>
+            <input
+              type="number"
+              value={poolAmount}
+              onChange={(e) => setPoolAmount(e.target.value)}
+              placeholder="e.g., 6000"
+              style={{ padding: "5px", width: "200px" }}
             />
           </div>
 
-          <div
-            className="badge badge-lg"
-            style={{ backgroundColor: "rgb(34, 197, 94)" }}
-          >
-            {group.paymentStatus || "AWAITING_CONTRIBUTIONS"}
+          <div style={{ marginBottom: "10px" }}>
+            <label>Number of Participants: </label>
+            <input
+              type="number"
+              value={numParticipants}
+              onChange={(e) => setNumParticipants(e.target.value)}
+              placeholder="e.g., 3"
+              style={{ padding: "5px", width: "200px" }}
+            />
           </div>
 
-          {poolStatus && (
-            <div className="mt-4 p-3 bg-info bg-opacity-10 rounded-lg text-sm">
-              <p>
-                <strong>Status:</strong> {poolStatus.intentStatus || "Unknown"}
-              </p>
-              <p>
-                <strong>Funded:</strong> {poolStatus.percentageFunded}%
-              </p>
-              {poolStatus.message && (
-                <p className="text-success font-semibold">
-                  {poolStatus.message}
-                </p>
-              )}
-            </div>
+          {error && (
+            <div style={{ color: "red", marginBottom: "10px" }}>{error}</div>
           )}
-        </div>
-      </div>
 
-      {/* Create Intent Section */}
-      {!group.finternetIntentId && (
-        <div className="card bg-warning bg-opacity-20 shadow">
-          <div className="card-body">
-            <h3 className="card-title text-lg">
-              ⚠️ Step 1: Initialize Payment Pool
-            </h3>
-            <p className="text-sm mb-4">
-              The group admin needs to create the shared escrow pool first.
-            </p>
-            <button
-              className="btn btn-warning w-full"
-              onClick={handleCreatePaymentIntent}
+          <button
+            onClick={handleCreateIntent}
+            disabled={loading}
+            style={{
+              padding: "10px 20px",
+              backgroundColor: loading ? "#ccc" : "#007bff",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+          >
+            {loading ? "Creating..." : "Create Payment Intent"}
+          </button>
+        </div>
+      )}
+
+      {/* Step 2: Show Payment URL */}
+      {step === 2 && (
+        <div
+          style={{
+            backgroundColor: "#f0f8ff",
+            padding: "15px",
+            borderRadius: "4px",
+          }}
+        >
+          <h3>✅ Payment Intent Created!</h3>
+          <div style={{ marginBottom: "10px" }}>
+            <strong>Intent ID:</strong>
+            <code
+              style={{
+                display: "block",
+                wordBreak: "break-all",
+                marginTop: "5px",
+              }}
             >
-              Create Payment Intent
-            </button>
+              {intentId}
+            </code>
           </div>
-        </div>
-      )}
 
-      {/* Contribution Section */}
-      {group.finternetIntentId && (
-        <div className="card bg-white shadow">
-          <div className="card-body">
-            <h3 className="card-title text-lg">
-              💳 Step 2: Register Your Contribution
-            </h3>
-
-            <div className="form-control gap-3">
-              <input
-                type="number"
-                placeholder="Enter your contribution amount"
-                className="input input-bordered"
-                value={contributionAmount}
-                onChange={(e) => setContributionAmount(e.target.value)}
-              />
-
-              <button className="btn btn-primary" onClick={handleContribute}>
-                Register Contribution
-              </button>
-            </div>
-
-            {/* Participants List */}
-            <div className="mt-6">
-              <h4 className="font-semibold mb-3">
-                Participants ({contributorsCount})
-              </h4>
-              <div className="space-y-2">
-                {group.participants?.map((p) => (
-                  <div
-                    key={p.user}
-                    className="flex justify-between items-center p-2 bg-base-200 rounded"
-                  >
-                    <span className="text-sm">{p.user}</span>
-                    <div className="text-right">
-                      <span className="font-semibold">
-                        {p.depositAmount || 0} {group.currency}
-                      </span>
-                      {p.deposited && (
-                        <span className="badge badge-success badge-sm ml-2">
-                          Paid
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Payment Link Section */}
-      {paymentUrl && (
-        <div className="card bg-success bg-opacity-20 shadow">
-          <div className="card-body">
-            <h3 className="card-title text-lg">✅ Step 3: Complete Payment</h3>
-            <p className="text-sm mb-4">
-              Share this payment link with all participants. Everyone uses the
-              SAME link to contribute to the shared pool.
-            </p>
-
-            <div className="bg-white p-4 rounded-lg border-2 border-success mb-4 break-all text-xs font-mono">
+          <div style={{ marginBottom: "10px" }}>
+            <strong>Payment URL (Share with all participants):</strong>
+            <code
+              style={{
+                display: "block",
+                wordBreak: "break-all",
+                marginTop: "5px",
+              }}
+            >
               {paymentUrl}
-            </div>
-
-            <button
-              className="btn btn-success w-full gap-2"
-              onClick={() => window.open(paymentUrl, "_blank")}
-            >
-              <span>💰</span> Go to Payment Page
-            </button>
+            </code>
           </div>
-        </div>
-      )}
 
-      {/* Verify Pool Section */}
-      {group.finternetIntentId && (
-        <div className="card bg-white shadow">
-          <div className="card-body">
-            <h3 className="card-title text-lg">
-              🔍 Step 4: Verify Pool Status
-            </h3>
-            <p className="text-sm mb-4">
-              Check if all participants have completed their payments.
-            </p>
+          <button
+            onClick={() => window.open(paymentUrl, "_blank")}
+            style={{
+              padding: "10px 20px",
+              backgroundColor: "#28a745",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+              marginRight: "10px",
+            }}
+          >
+            Open Payment Page
+          </button>
 
-            <button className="btn btn-info w-full" onClick={handleVerifyPool}>
-              Check Pool Status
-            </button>
-          </div>
+          <button
+            onClick={() => navigator.clipboard.writeText(paymentUrl)}
+            style={{
+              padding: "10px 20px",
+              backgroundColor: "#6c757d",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+              marginRight: "10px",
+            }}
+          >
+            Copy Link
+          </button>
+
+          <button
+            onClick={handleCreateNewIntent}
+            style={{
+              padding: "10px 20px",
+              backgroundColor: "#007bff",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+            }}
+          >
+            Create New Intent
+          </button>
         </div>
       )}
     </div>

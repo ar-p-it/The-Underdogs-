@@ -11,7 +11,7 @@ groupsRouter.use((req, _res, next) => {
   console.log(`[GroupsRouter] ${req.method} ${req.originalUrl}`);
   next();
 });
-const expenseController = require('../controllers/expenseController');
+const expenseController = require("../controllers/expenseController");
 
 // 1. Create a new event/group
 groupsRouter.post("/", userAuth, async (req, res) => {
@@ -114,16 +114,7 @@ groupsRouter.post(
         });
       }
 
-      // If already has intent, return existing
-      if (group.finternetIntentId) {
-        return res.status(200).json({
-          success: true,
-          message: "Payment intent already exists",
-          intentId: group.finternetIntentId,
-          poolUrl: `https://api.fmm.finternetlab.io/payment/${group.finternetIntentId}`,
-        });
-      }
-
+      // Always create a new intent (don't reuse existing ones)
       const finalAmount = totalAmount || group.poolAmount;
 
       // Debug: Log the API key
@@ -171,24 +162,56 @@ groupsRouter.post(
         });
       }
 
+      const intentId = intentData.data.id;
+
+      // Now fetch the full intent details to get the paymentUrl
+      console.log("[Finternet] Fetching full intent details for:", intentId);
+      const detailsResponse = await fetch(
+        `https://api.fmm.finternetlab.io/api/v1/payment-intents/${intentId}`,
+        {
+          method: "GET",
+          headers: {
+            "X-API-Key": process.env.FINTERNET_API_KEY,
+            "Content-Type": "application/json",
+          },
+        },
+      );
+
+      const detailsData = await detailsResponse.json();
+
+      if (!detailsResponse.ok) {
+        console.error(
+          "[Finternet] Failed to fetch intent details:",
+          detailsData,
+        );
+        return res.status(400).json({
+          success: false,
+          message: "Failed to fetch payment intent details",
+          error: detailsData,
+        });
+      }
+
       // Store intent ID in group
-      group.finternetIntentId = intentData.data.id;
+      group.finternetIntentId = intentId;
       group.paymentStatus = "AWAITING_CONTRIBUTIONS";
       group.poolAmount = finalAmount;
       await group.save();
 
+      const paymentUrl = detailsData.data.paymentUrl;
+
       console.log("[Finternet] Created payment intent:", {
-        intentId: intentData.data.id,
+        intentId: intentId,
         groupId: groupId,
         amount: finalAmount,
         walletId: group.finternetWalletId,
+        paymentUrl: paymentUrl,
       });
 
       res.status(201).json({
         success: true,
         message: "Payment intent created",
-        intentId: intentData.data.id,
-        poolUrl: intentData.data.paymentUrl,
+        intentId: intentId,
+        poolUrl: paymentUrl,
         totalPoolAmount: finalAmount,
       });
     } catch (err) {
@@ -603,17 +626,35 @@ groupsRouter.post("/:groupId/create-milestone", userAuth, async (req, res) => {
 });
 
 // 4. Group-scoped expense and balances endpoints
-groupsRouter.get('/:groupId/expenses', userAuth, expenseController.getGroupExpenses);
-groupsRouter.post('/:groupId/expenses', userAuth, expenseController.postExpense);
-groupsRouter.get('/:groupId/balances', userAuth, expenseController.getGroupBalances);
+groupsRouter.get(
+  "/:groupId/expenses",
+  userAuth,
+  expenseController.getGroupExpenses,
+);
+groupsRouter.post(
+  "/:groupId/expenses",
+  userAuth,
+  expenseController.postExpense,
+);
+groupsRouter.get(
+  "/:groupId/balances",
+  userAuth,
+  expenseController.getGroupBalances,
+);
 
 // 5. Get a single group by id (with participants)
 // (Must come AFTER specific routes like /my or /join)
-groupsRouter.get('/:groupId', userAuth, async (req, res) => {
+groupsRouter.get("/:groupId", userAuth, async (req, res) => {
   try {
     const { groupId } = req.params;
-    const group = await Group.findById(groupId).populate('participants.user', 'firstName lastName emailId');
-    if (!group) return res.status(404).json({ success: false, message: 'Group not found' });
+    const group = await Group.findById(groupId).populate(
+      "participants.user",
+      "firstName lastName emailId",
+    );
+    if (!group)
+      return res
+        .status(404)
+        .json({ success: false, message: "Group not found" });
     res.json({ success: true, group });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
