@@ -4,8 +4,11 @@ import Sidebar from '../components/Sidebar';
 import CreateGroupModal from '../components/CreateGroupModal';
 import InviteQRModal from '../components/InviteQRModal';
 import JoinGroupModal from '../components/JoinGroupModal';
+import { useDispatch, useSelector } from "react-redux";
 
 export default function Dashboard() {
+    // const feed = useSelector((store) => store.feed);
+  const dispatch = useDispatch();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isJoinOpen, setIsJoinOpen] = useState(false);
   const [inviteInfo, setInviteInfo] = useState(null);
