@@ -1,16 +1,24 @@
 import { SignOutButton } from '@clerk/clerk-react';
-// 
-//import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import Sidebar from '../components/Sidebar';
+import CreateGroupModal from '../components/CreateGroupModal';
+import InviteQRModal from '../components/InviteQRModal';
+import JoinGroupModal from '../components/JoinGroupModal';
 
 export default function Dashboard() {
- // const navigate = useNavigate();
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isJoinOpen, setIsJoinOpen] = useState(false);
+  const [inviteInfo, setInviteInfo] = useState(null);
   return (
-    <div className="min-h-screen bg-white text-black">
-      <div className="container mx-auto px-4 py-6">
+    <div className="min-h-screen bg-white text-black flex">
+      <Sidebar />
+      <div className="flex-1 container mx-auto px-4 py-6">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-3xl font-bold">Dashboard</h1>
           <div className="flex items-center gap-2">
-            <button className="btn btn-neutral">Add Expense</button>
+            {/* <button className="btn btn-neutral">Add Expense</button> */}
+            <button className="btn btn-primary" onClick={() => setIsCreateOpen(true)}>Create New Group</button>
+            <button className="btn btn-outline" onClick={() => setIsJoinOpen(true)}>Join Group</button>
           </div>
         </div>
 
@@ -70,16 +78,41 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="card bg-white shadow">
+            {/* <div className="card bg-white shadow">
               <div className="card-body">
                 <h2 className="card-title">Your Groups</h2>
                 <div className="py-6 text-center text-base-content/70">No groups yet</div>
                 <button className="btn btn-outline w-full">Create new group</button>
               </div>
-            </div>
+            </div> */}
           </div>
         </div>
       </div>
+      <CreateGroupModal
+        open={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
+        onCreated={(group) => {
+          const id = group?._id || group?.id;
+          const name = group?.name || 'New Group';
+          setInviteInfo({ id, name });
+          setIsCreateOpen(false);
+          window.dispatchEvent(new CustomEvent('groups:refresh'));
+        }}
+      />
+      <JoinGroupModal
+        open={isJoinOpen}
+        onClose={() => setIsJoinOpen(false)}
+        onJoined={() => {
+          setIsJoinOpen(false);
+          window.dispatchEvent(new CustomEvent('groups:refresh'));
+        }}
+      />
+      <InviteQRModal
+        open={!!inviteInfo}
+        groupId={inviteInfo?.id}
+        groupName={inviteInfo?.name}
+        onClose={() => setInviteInfo(null)}
+      />
     </div>
   );
 }

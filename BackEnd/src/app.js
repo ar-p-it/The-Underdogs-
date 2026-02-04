@@ -5,10 +5,20 @@ const cookieParser = require("cookie-parser");
 const cors = require("cors");
 app.use(express.json());
 app.use(cookieParser());
+// CORS: allow local dev origins and optional env override
+const allowedOrigins = [
+  process.env.FRONTEND_ORIGIN || "http://localhost:5173",
+  "http://localhost:5174",
+];
+
 app.use(
   cors({
-    origin: "http://localhost:5173",
     credentials: true,
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true); // allow same-origin/non-browser requests
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error("Not allowed by CORS"));
+    },
   })
 );
 // middleware
