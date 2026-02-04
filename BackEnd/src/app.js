@@ -1,3 +1,12 @@
+require("dotenv").config();
+
+// Debug: Check if env variables loaded
+console.log("=== ENV VARIABLES CHECK ===");
+console.log("FINTERNET_API_KEY:", process.env.FINTERNET_API_KEY);
+console.log("NODE_ENV:", process.env.NODE_ENV);
+console.log("PORT:", process.env.PORT);
+console.log("==========================");
+
 const express = require("express");
 const app = express();
 const connectDB = require("./config/databse");
@@ -19,7 +28,7 @@ app.use(
       if (allowedOrigins.includes(origin)) return callback(null, true);
       return callback(new Error("Not allowed by CORS"));
     },
-  })
+  }),
 );
 // middleware
 

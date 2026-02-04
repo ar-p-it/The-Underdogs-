@@ -33,7 +33,7 @@ const participantSchema = new mongoose.Schema(
       ref: "Transaction",
     },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const groupSchema = new mongoose.Schema(
@@ -59,15 +59,15 @@ const groupSchema = new mongoose.Schema(
       type: String,
       default: "INR",
     },
-    
+
     // --- NEW FIELD ---
-    // This stores the 'POOL_XYZ' string you generate. 
+    // This stores the 'POOL_XYZ' string you generate.
     // You will send THIS string to Finternet as 'settlementDestination'.
     finternetWalletId: {
       type: String,
       unique: true,
       sparse: true,
-      trim: true
+      trim: true,
     },
 
     // You can keep this if you use the wallet.js model for internal logic,
@@ -91,8 +91,65 @@ const groupSchema = new mongoose.Schema(
       spent: { type: Number, default: 0 },
       remaining: { type: Number, default: 0 },
     },
+
+    // Finternet Milestone Payment Integration
+    finternetIntentId: {
+      type: String,
+      sparse: true,
+    },
+
+    poolAmount: {
+      type: Number,
+      description: "Total amount for the shared escrow pool",
+    },
+
+    paymentStatus: {
+      type: String,
+      enum: [
+        "AWAITING_CONTRIBUTIONS",
+        "FUNDED",
+        "PROCESSING",
+        "SUCCEEDED",
+        "SETTLED",
+        "FINAL",
+      ],
+      default: "AWAITING_CONTRIBUTIONS",
+    },
+
+    milestones: [
+      {
+        finternetMilestoneId: String,
+        index: Number,
+        description: String,
+        amount: Number,
+        percentage: Number,
+        status: {
+          type: String,
+          enum: ["PENDING", "COMPLETED", "RELEASED"],
+          default: "PENDING",
+        },
+        completedAt: Date,
+        completedBy: mongoose.Schema.Types.ObjectId,
+        releasedAt: Date,
+        releasedAmount: Number,
+      },
+    ],
+
+    distributions: [
+      {
+        user: mongoose.Schema.Types.ObjectId,
+        milestoneIndex: Number,
+        amount: Number,
+        status: {
+          type: String,
+          enum: ["PENDING", "RELEASED", "SETTLED"],
+          default: "PENDING",
+        },
+        releasedAt: Date,
+      },
+    ],
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Index for fast lookups when Finternet sends a webhook or callback

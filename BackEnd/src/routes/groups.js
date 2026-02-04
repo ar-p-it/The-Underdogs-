@@ -25,7 +25,10 @@ groupsRouter.post("/", userAuth, async (req, res) => {
       });
     }
 
-    if (typeof depositAmountPerPerson !== "number" || depositAmountPerPerson <= 0) {
+    if (
+      typeof depositAmountPerPerson !== "number" ||
+      depositAmountPerPerson <= 0
+    ) {
       return res.status(400).json({
         success: false,
         message: "'depositAmountPerPerson' must be a positive number",
@@ -52,6 +55,10 @@ groupsRouter.post("/", userAuth, async (req, res) => {
       currency: currency || "INR",
       finternetWalletId: groupFinternetId,
       poolWallet: poolWallet._id,
+      poolAmount: depositAmountPerPerson * 3, // Default to 3 participants, can be adjusted
+      paymentStatus: "AWAITING_CONTRIBUTIONS",
+      milestones: [],
+      distributions: [],
       participants: [
         {
           user: req.user._id,
@@ -83,15 +90,375 @@ groupsRouter.post("/", userAuth, async (req, res) => {
   }
 });
 
+// Create Finternet Payment Intent for Group Pool
+groupsRouter.post(
+  "/:groupId/create-payment-intent",
+  userAuth,
+  async (req, res) => {
+    try {
+      const { groupId } = req.params;
+      const { totalAmount, numParticipants } = req.body;
+
+      const group = await Group.findById(groupId);
+      if (!group) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Group not found" });
+      }
+
+      // Only admin can create payment intent
+      if (group.admin.toString() !== req.user._id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: "Only group admin can create payment intent",
+        });
+      }
+
+      // If already has intent, return existing
+      if (group.finternetIntentId) {
+        return res.status(200).json({
+          success: true,
+          message: "Payment intent already exists",
+          intentId: group.finternetIntentId,
+          poolUrl: `https://api.fmm.finternetlab.io/payment/${group.finternetIntentId}`,
+        });
+      }
+
+      const finalAmount = totalAmount || group.poolAmount;
+
+      // Debug: Log the API key
+      console.log("USING FINTERNET KEY:", process.env.FINTERNET_API_KEY);
+      console.log("KEY LENGTH:", process.env.FINTERNET_API_KEY?.length);
+      console.log(
+        "KEY STARTS WITH:",
+        process.env.FINTERNET_API_KEY?.substring(0, 12),
+      );
+
+      // Create payment intent with Finternet API
+      const finternetResponse = await fetch(
+        "https://api.fmm.finternetlab.io/api/v1/payment-intents",
+        {
+          method: "POST",
+          headers: {
+            "X-API-Key": process.env.FINTERNET_API_KEY,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            amount: finalAmount.toString(),
+            currency: group.currency || "USDC",
+            type: "DELIVERY_VS_PAYMENT",
+            settlementMethod: "OFF_RAMP_MOCK",
+            settlementDestination: group.finternetWalletId,
+            metadata: {
+              releaseType: "MILESTONE_LOCKED",
+              autoRelease: true,
+              groupId: groupId,
+              payerType: "MULTIPLE_CONTRIBUTORS",
+              expectedContributors:
+                numParticipants || group.participants.length,
+            },
+          }),
+        },
+      );
+
+      const intentData = await finternetResponse.json();
+
+      if (!finternetResponse.ok) {
+        return res.status(400).json({
+          success: false,
+          message: "Failed to create payment intent",
+          error: intentData,
+        });
+      }
+
+      // Store intent ID in group
+      group.finternetIntentId = intentData.data.id;
+      group.paymentStatus = "AWAITING_CONTRIBUTIONS";
+      group.poolAmount = finalAmount;
+      await group.save();
+
+      console.log("[Finternet] Created payment intent:", {
+        intentId: intentData.data.id,
+        groupId: groupId,
+        amount: finalAmount,
+        walletId: group.finternetWalletId,
+      });
+
+      res.status(201).json({
+        success: true,
+        message: "Payment intent created",
+        intentId: intentData.data.id,
+        poolUrl: intentData.data.paymentUrl,
+        totalPoolAmount: finalAmount,
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+);
+
+// Register user contribution to shared pool
+groupsRouter.post("/:groupId/contribute", userAuth, async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const { contributionAmount } = req.body;
+
+    const group = await Group.findById(groupId);
+    if (!group) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Group not found" });
+    }
+
+    if (!group.finternetIntentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment intent not created yet. Admin must create it first.",
+      });
+    }
+
+    // Find or create participant entry
+    let participant = group.participants.find(
+      (p) => p.user.toString() === req.user._id.toString(),
+    );
+
+    if (!participant) {
+      // If user not in group yet, add them
+      group.participants.push({
+        user: req.user._id,
+        role: "member",
+        depositAmount: contributionAmount,
+        depositCurrency: group.currency,
+        deposited: false,
+      });
+    } else {
+      // Update contribution amount
+      participant.depositAmount = contributionAmount;
+      participant.depositCurrency = group.currency;
+    }
+
+    await group.save();
+
+    // Add to user's groups if not already there
+    await User.findByIdAndUpdate(req.user._id, {
+      $addToSet: { groups: groupId },
+    });
+
+    console.log("[Groups] User registered contribution:", {
+      userId: req.user._id,
+      groupId: groupId,
+      amount: contributionAmount,
+    });
+
+    res.status(200).json({
+      success: true,
+      message:
+        "Contribution registered. Share payment URL with all participants.",
+      paymentUrl: `https://api.fmm.finternetlab.io/payment/${group.finternetIntentId}`,
+      yourAmount: contributionAmount,
+      totalPoolTarget: group.poolAmount,
+      currentContributions: group.participants.reduce(
+        (sum, p) => sum + (p.depositAmount || 0),
+        0,
+      ),
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Verify pool is fully funded
+groupsRouter.post("/:groupId/verify-pool", userAuth, async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const group = await Group.findById(groupId);
+
+    if (!group) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Group not found" });
+    }
+
+    if (!group.finternetIntentId) {
+      return res.status(400).json({
+        success: false,
+        message: "No payment intent created",
+      });
+    }
+
+    // Check intent status via Finternet API
+    const checkResponse = await fetch(
+      `https://api.fmm.finternetlab.io/api/v1/payment-intents/${group.finternetIntentId}`,
+      {
+        headers: {
+          "X-API-Key": process.env.FINTERNET_API_KEY,
+        },
+      },
+    );
+
+    const intentStatus = await checkResponse.json();
+
+    if (!checkResponse.ok) {
+      return res.status(400).json({
+        success: false,
+        message: "Failed to check payment intent status",
+        error: intentStatus,
+      });
+    }
+
+    const totalReceived = parseFloat(intentStatus.data.amount);
+    const expectedTotal = group.poolAmount;
+
+    if (
+      totalReceived >= expectedTotal &&
+      (intentStatus.data.status === "SUCCEEDED" ||
+        intentStatus.data.status === "PROCESSING")
+    ) {
+      group.paymentStatus = "FUNDED";
+      group.participants.forEach((p) => {
+        p.deposited = true;
+      });
+      await group.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "✅ Pool fully funded!",
+        totalAmount: totalReceived,
+        status: "FUNDED",
+        intentStatus: intentStatus.data.status,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Pool verification",
+      totalReceived,
+      expectedTotal,
+      pendingAmount: expectedTotal - totalReceived,
+      status: intentStatus.data.status,
+      percentageFunded: ((totalReceived / expectedTotal) * 100).toFixed(2),
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Release funds from milestone
+groupsRouter.post("/:groupId/release-milestone", userAuth, async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const { milestoneId, milestoneIndex } = req.body;
+
+    const group = await Group.findById(groupId);
+    if (!group) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Group not found" });
+    }
+
+    // Only admin can release
+    if (group.admin.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "Only admin can release milestone funds",
+      });
+    }
+
+    const milestone = group.milestones.find(
+      (m) => m.finternetMilestoneId === milestoneId,
+    );
+
+    if (!milestone) {
+      return res.status(404).json({
+        success: false,
+        message: "Milestone not found",
+      });
+    }
+
+    if (milestone.status !== "PENDING") {
+      return res.status(400).json({
+        success: false,
+        message: `Milestone already ${milestone.status.toLowerCase()}`,
+      });
+    }
+
+    // Call Finternet API to complete milestone
+    const completeResponse = await fetch(
+      `https://api.fmm.finternetlab.io/api/v1/payment-intents/${group.finternetIntentId}/escrow/milestones/${milestoneId}/complete`,
+      {
+        method: "POST",
+        headers: {
+          "X-API-Key": process.env.FINTERNET_API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          completedBy: req.user.walletAddress || req.user._id.toString(),
+          completionProof: `Milestone ${milestoneIndex} completed for group ${groupId}`,
+          completionProofURI: `https://your-app.com/groups/${groupId}/milestone/${milestoneIndex}`,
+        }),
+      },
+    );
+
+    const result = await completeResponse.json();
+
+    if (!completeResponse.ok) {
+      return res.status(400).json({
+        success: false,
+        message: "Failed to release milestone funds",
+        error: result,
+      });
+    }
+
+    // Update milestone status
+    milestone.status = "RELEASED";
+    milestone.releasedAmount = milestone.amount;
+    milestone.releasedAt = new Date();
+    milestone.completedBy = req.user._id;
+
+    // Distribute released amount equally among all participants
+    const amountPerUser = milestone.amount / group.participants.length;
+
+    const newDistributions = group.participants.map((p) => ({
+      user: p.user,
+      milestoneIndex: milestone.index,
+      amount: amountPerUser,
+      status: "RELEASED",
+      releasedAt: new Date(),
+    }));
+
+    group.distributions.push(...newDistributions);
+    await group.save();
+
+    console.log("[Finternet] Milestone released:", {
+      groupId: groupId,
+      milestoneIndex: milestoneIndex,
+      totalReleased: milestone.amount,
+      perUserAmount: amountPerUser,
+      participants: group.participants.length,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Released ${milestone.amount} from milestone ${milestoneIndex}`,
+      milestone: {
+        index: milestone.index,
+        totalReleased: milestone.amount,
+        perUserAmount: amountPerUser,
+        releasedAt: milestone.releasedAt,
+      },
+      distributions: newDistributions,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // 2. Get groups for current user (created or joined)
 groupsRouter.get("/my", userAuth, async (req, res) => {
   try {
     const userId = req.user._id;
     const groups = await Group.find({
-      $or: [
-        { admin: userId },
-        { "participants.user": userId },
-      ],
+      $or: [{ admin: userId }, { "participants.user": userId }],
     })
       .sort({ updatedAt: -1 })
       .lean();
@@ -107,14 +474,20 @@ groupsRouter.post("/join", userAuth, async (req, res) => {
   try {
     const { groupId } = req.body;
     if (!groupId) {
-      return res.status(400).json({ success: false, message: "groupId is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "groupId is required" });
     }
     const group = await Group.findById(groupId);
     if (!group) {
-      return res.status(404).json({ success: false, message: "Group not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Group not found" });
     }
 
-    const alreadyMember = group.participants.some(p => p.user.toString() === req.user._id.toString());
+    const alreadyMember = group.participants.some(
+      (p) => p.user.toString() === req.user._id.toString(),
+    );
     if (!alreadyMember) {
       group.participants.push({
         user: req.user._id,
@@ -132,6 +505,98 @@ groupsRouter.post("/join", userAuth, async (req, res) => {
     }
 
     res.json({ success: true, group });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Create milestones for a group
+groupsRouter.post("/:groupId/create-milestone", userAuth, async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const { milestones } = req.body; // Array of milestone objects
+
+    const group = await Group.findById(groupId);
+    if (!group) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Group not found" });
+    }
+
+    // Only admin can create milestones
+    if (group.admin.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "Only admin can create milestones",
+      });
+    }
+
+    if (!group.finternetIntentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment intent not created yet",
+      });
+    }
+
+    const createdMilestones = [];
+
+    // Create each milestone via Finternet API
+    for (const milestone of milestones) {
+      const finternetResponse = await fetch(
+        `https://api.fmm.finternetlab.io/api/v1/payment-intents/${group.finternetIntentId}/escrow/milestones`,
+        {
+          method: "POST",
+          headers: {
+            "X-API-Key": process.env.FINTERNET_API_KEY,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            milestoneIndex: milestone.milestoneIndex,
+            description: milestone.description,
+            amount: milestone.amount.toString(),
+            percentage: milestone.percentage,
+          }),
+        },
+      );
+
+      const milestoneData = await finternetResponse.json();
+
+      if (!finternetResponse.ok) {
+        return res.status(400).json({
+          success: false,
+          message: `Failed to create milestone ${milestone.milestoneIndex}`,
+          error: milestoneData,
+        });
+      }
+
+      createdMilestones.push({
+        finternetMilestoneId: milestoneData.data.id,
+        index: milestone.milestoneIndex,
+        description: milestone.description,
+        amount: milestone.amount,
+        percentage: milestone.percentage,
+        status: "PENDING",
+      });
+    }
+
+    // Store milestones in group document
+    group.milestones = createdMilestones;
+    await group.save();
+
+    console.log("[Finternet] Created milestones:", {
+      groupId: groupId,
+      count: createdMilestones.length,
+      milestones: createdMilestones.map((m) => ({
+        index: m.index,
+        amount: m.amount,
+      })),
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Milestones created",
+      milestones: createdMilestones,
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
