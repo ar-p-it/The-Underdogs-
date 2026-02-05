@@ -4,6 +4,21 @@ import { useDispatch, useSelector } from "react-redux";
 import { motion, AnimatePresence } from 'framer-motion';
 import { gsap } from 'gsap';
 import axios from 'axios';
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+} from 'recharts';
 
 import Sidebar from '../components/Sidebar';
 import CreateGroupModal from '../components/CreateGroupModal';
@@ -39,6 +54,29 @@ export default function Dashboard() {
   const [monthlySpending, setMonthlySpending] = useState(0);
   const [yearlyTotal, setYearlyTotal] = useState(0);
   const [recent, setRecent] = useState([]);
+
+  // Derived chart data
+  const spendingTrend = useMemo(() => {
+    const items = (recent || []).slice(0, 10).reverse();
+    return items.map(r => ({
+      label: r.date?.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) || '',
+      amount: Number(r.amount || 0),
+    }));
+  }, [recent]);
+
+  const totalsData = useMemo(() => (
+    [
+      { name: 'Monthly', value: Number(monthlySpending || 0) },
+      { name: 'Yearly', value: Number(yearlyTotal || 0) },
+    ]
+  ), [monthlySpending, yearlyTotal]);
+
+  const balanceData = useMemo(() => (
+    [
+      { name: 'Owed to You', value: Number(youAreOwed || 0), color: '#059669' }, // emerald-600
+      { name: 'You Owe', value: Number(youOwe || 0), color: '#f59e0b' }, // amber-500
+    ]
+  ), [youAreOwed, youOwe]);
 
   // Refs for GSAP number animations
   const totalRef = useRef(null);
@@ -160,6 +198,72 @@ export default function Dashboard() {
                   <p className="text-sm font-semibold text-slate-600">Yearly Total</p>
                   <p className="text-3xl font-bold text-slate-900 mt-1">₹{Number(yearlyTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                 </motion.div>
+              </div>
+              {/* Charts Section */}
+              <div className="p-6 border-t border-slate-50">
+                <div className="grid lg:grid-cols-2 gap-6">
+                  {/* Spending Trend (Line) */}
+                  <motion.div className="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow p-4" whileHover={{ y: -3, scale: 1.005 }}>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-bold text-emerald-950">Spending Trend</h3>
+                      <span className="text-xs text-slate-400">Last {spendingTrend.length} activities</span>
+                    </div>
+                    <div className="h-56">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={spendingTrend} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                          <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 12 }} stroke="#94a3b8" />
+                          <YAxis tick={{ fill: '#64748b', fontSize: 12 }} stroke="#94a3b8" />
+                          <Tooltip contentStyle={{ fontSize: 12 }} />
+                          <Legend wrapperStyle={{ fontSize: 12 }} />
+                          <Line type="monotone" dataKey="amount" stroke="#059669" strokeWidth={2} dot={{ r: 2 }} name="Amount" />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </motion.div>
+
+                  {/* Totals (Bar) */}
+                  <motion.div className="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow p-4" whileHover={{ y: -3, scale: 1.005 }}>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-bold text-emerald-950">Totals</h3>
+                      <span className="text-xs text-slate-400">Monthly vs Yearly</span>
+                    </div>
+                    <div className="h-56">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={totalsData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                          <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 12 }} stroke="#94a3b8" />
+                          <YAxis tick={{ fill: '#64748b', fontSize: 12 }} stroke="#94a3b8" />
+                          <Tooltip contentStyle={{ fontSize: 12 }} />
+                          <Bar dataKey="value" name="₹" fill="#10b981" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </motion.div>
+                </div>
+
+                {/* Balance Breakdown (Pie) */}
+                <div className="grid grid-cols-1 mt-6">
+                  <motion.div className="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow p-4" whileHover={{ y: -3, scale: 1.005 }}>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-bold text-emerald-950">Balance Breakdown</h3>
+                      <span className="text-xs text-slate-400">Owed vs Owe</span>
+                    </div>
+                    <div className="h-56">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Tooltip contentStyle={{ fontSize: 12 }} />
+                          <Legend wrapperStyle={{ fontSize: 12 }} />
+                          <Pie data={balanceData} dataKey="value" nameKey="name" innerRadius={40} outerRadius={70} label>
+                            {balanceData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </motion.div>
+                </div>
               </div>
             </motion.div>
           </motion.div>
