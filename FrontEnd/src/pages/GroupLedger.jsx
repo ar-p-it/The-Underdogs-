@@ -11,10 +11,11 @@ import {
   FaCheckCircle,
   FaWallet,
   FaLightbulb,
-  FaShieldAlt
+  FaShieldAlt,
 } from "react-icons/fa";
 import GroupPaymentFlow from "../components/GroupPaymentFlow";
 import ScanReceiptModal from "../components/ScanReceiptModal";
+import PoolManagement from "../components/PoolManagement";
 
 // --- Animation Variants ---
 const containerVar = {
@@ -35,6 +36,11 @@ const listVar = {
   visible: { opacity: 1, x: 0 },
 };
 
+// NOTE: Our ESLint setup can miss usage of identifiers in JSX member expressions
+// (e.g. <motion.div />) and wrongly flags `motion` as unused.
+// This keeps the build/lint clean without changing runtime behavior.
+const _motion = motion;
+
 export default function GroupLedger() {
   const { groupId } = useParams();
   const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:7777";
@@ -54,7 +60,7 @@ export default function GroupLedger() {
   const [inputSplits, setInputSplits] = useState([]);
   const [activeTab, setActiveTab] = useState("expenses");
   const [showScan, setShowScan] = useState(false);
-  
+
   // Refs for GSAP
   const submitBtnRef = useRef(null);
   const balanceRefs = useRef([]);
@@ -335,7 +341,10 @@ export default function GroupLedger() {
                         </div>
                         Add New Expense
                         <div className="ml-auto">
-                          <button className="btn btn-sm bg-emerald-500 hover:bg-emerald-600 text-white border-none" onClick={() => setShowScan(true)}>
+                          <button
+                            className="btn btn-sm bg-emerald-500 hover:bg-emerald-600 text-white border-none"
+                            onClick={() => setShowScan(true)}
+                          >
                             <FaReceipt className="mr-1" /> Scan Receipt
                           </button>
                         </div>
@@ -644,48 +653,50 @@ export default function GroupLedger() {
                     <GroupPaymentFlow groupId={groupId} />
                   </div>
 
-                {/* RIGHT: Info Card (UPDATED TO GREEN/WHITE THEME) */}
-                <motion.div
-                  variants={itemVar}
-                  initial="hidden"
-                  animate="visible"
-                  className="card bg-white border border-emerald-100 shadow-xl shadow-emerald-50/50 h-fit"
-                >
-                  <div className="card-body p-6">
-                    <h3 className="card-title text-emerald-800 mb-6 flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
-                        <FaLightbulb className="text-emerald-500 text-sm" />
-                      </div>
-                      How It Works
-                    </h3>
-
-                    <ul className="space-y-4">
-                      {[
-                        "Set total pool amount & participants",
-                        "Create payment intent on blockchain",
-                        "Share payment URL with members",
-                        "Create milestones for fund release",
-                        "Complete milestones to distribute funds",
-                      ].map((text, i) => (
-                        <InfoItem key={i} index={i} text={text} />
-                      ))}
-                    </ul>
-
-                    <motion.div 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 0.8 }}
-                      className="mt-6 p-4 bg-emerald-50 rounded-xl border border-emerald-100 flex gap-3 text-xs text-emerald-800 font-medium"
-                    >
-                      <FaShieldAlt className="text-emerald-500 text-lg flex-shrink-0" />
-                      <p>
-                        Funds are secured by smart contracts and only released upon milestone verification.
-                      </p>
-                    </motion.div>
-                  </div>
-                </motion.div>
-                {/* End grid container */}
+                  <motion.div
+                    variants={itemVar}
+                    className="card bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 shadow-lg"
+                  >
+                    <div className="card-body">
+                      <h3 className="card-title text-blue-900 mb-4">
+                        💡 How It Works
+                      </h3>
+                      <ul className="space-y-3 text-sm text-blue-800">
+                        <li className="flex gap-2">
+                          <span className="font-bold text-blue-600">1.</span>
+                          <span>
+                            Set total pool amount & number of participants
+                          </span>
+                        </li>
+                        <li className="flex gap-2">
+                          <span className="font-bold text-blue-600">2.</span>
+                          <span>Create payment intent on blockchain</span>
+                        </li>
+                        <li className="flex gap-2">
+                          <span className="font-bold text-blue-600">3.</span>
+                          <span>Share payment URL with all members</span>
+                        </li>
+                        <li className="flex gap-2">
+                          <span className="font-bold text-blue-600">4.</span>
+                          <span>Create milestones for fund release</span>
+                        </li>
+                        <li className="flex gap-2">
+                          <span className="font-bold text-blue-600">5.</span>
+                          <span>Complete milestones to distribute funds</span>
+                        </li>
+                      </ul>
+                    </div>
+                  </motion.div>
                 </div>
+
+                {/* Pool Management Section */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                >
+                  <PoolManagement groupId={groupId} />
+                </motion.div>
               </motion.div>
             )}
 

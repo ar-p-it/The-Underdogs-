@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -13,6 +13,9 @@ import {
 export default function PoolManagement({ groupId }) {
   const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:7777";
 
+  // See note in GroupLedger.jsx: ESLint may miss JSX member-expression usage.
+  const _motion = motion;
+
   const [pool, setPool] = useState(null);
   const [milestones, setMilestones] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,20 +28,7 @@ export default function PoolManagement({ groupId }) {
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Load pool data
-  useEffect(() => {
-    loadPoolData();
-
-    // Listen for pool updates from payment
-    const handlePoolUpdate = () => {
-      loadPoolData();
-    };
-
-    window.addEventListener("poolUpdated", handlePoolUpdate);
-    return () => window.removeEventListener("poolUpdated", handlePoolUpdate);
-  }, [groupId]);
-
-  const loadPoolData = async () => {
+  const loadPoolData = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
@@ -81,7 +71,20 @@ export default function PoolManagement({ groupId }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [API_BASE, groupId]);
+
+  // Load pool data
+  useEffect(() => {
+    loadPoolData();
+
+    // Listen for pool updates from payment
+    const handlePoolUpdate = () => {
+      loadPoolData();
+    };
+
+    window.addEventListener("poolUpdated", handlePoolUpdate);
+    return () => window.removeEventListener("poolUpdated", handlePoolUpdate);
+  }, [loadPoolData]);
 
   const handleAddMilestone = async (e) => {
     e.preventDefault();
@@ -356,8 +359,10 @@ export default function PoolManagement({ groupId }) {
             <AnimatePresence>
               {milestones.length === 0 ? (
                 <motion.div
+                  key="no-milestones"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
                   className="text-center py-10 text-slate-400"
                 >
                   <FaHourglassHalf className="mx-auto text-3xl mb-3 opacity-50" />
@@ -366,7 +371,7 @@ export default function PoolManagement({ groupId }) {
                   </p>
                 </motion.div>
               ) : (
-                milestones.map((m, idx) => (
+                milestones.map((m) => (
                   <motion.div
                     key={m._id}
                     layout
