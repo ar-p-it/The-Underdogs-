@@ -36,6 +36,14 @@ const milestoneSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "PoolExpense",
     },
+
+    // Finternet integration (optional)
+    finternetMilestoneId: {
+      type: String,
+      sparse: true,
+    },
+    finternetCreatedAt: Date,
+    finternetCompletedAt: Date,
   },
   { timestamps: true },
 );

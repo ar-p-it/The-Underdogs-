@@ -29,6 +29,31 @@ function isGroupMember(groupDoc, userId) {
   );
 }
 
+async function finternetJson(url, { method = "GET", body } = {}) {
+  const finternetResponse = await fetch(url, {
+    method,
+    headers: {
+      "X-API-Key": process.env.FINTERNET_API_KEY,
+      "Content-Type": "application/json",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  const data = await finternetResponse.json().catch(() => null);
+  if (!finternetResponse.ok) {
+    const message =
+      data?.message ||
+      data?.error ||
+      `Finternet request failed (${finternetResponse.status})`;
+    const err = new Error(message);
+    err.status = finternetResponse.status;
+    err.details = data;
+    throw err;
+  }
+
+  return data;
+}
+
 function computeAllocations({ amount, splitMethod, participants, splits }) {
   const amountCents = toCents(amount);
   if (!participants || participants.length === 0) {
@@ -271,6 +296,21 @@ poolsRouter.post("/:poolId/milestones", userAuth, async (req, res) => {
       });
     }
 
+    if (!process.env.FINTERNET_API_KEY) {
+      return res.status(500).json({
+        success: false,
+        message: "FINTERNET_API_KEY is not configured on the server",
+      });
+    }
+
+    const intentId = group.finternetIntentId || pool.finternetIntentId;
+    if (!intentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment intent not created yet",
+      });
+    }
+
     // Prefer fixed amount milestones.
     let computedReleaseAmount =
       releaseAmount !== undefined && releaseAmount !== null
@@ -314,12 +354,50 @@ poolsRouter.post("/:poolId/milestones", userAuth, async (req, res) => {
       });
     }
 
+    // FINTERNET: Create milestone, then immediately complete it (settle)
+    const nextMilestoneIndex = (() => {
+      const indices = (group.milestones || [])
+        .map((m) => Number(m?.index))
+        .filter((n) => Number.isFinite(n));
+      const max = indices.length ? Math.max(...indices) : 0;
+      return max + 1;
+    })();
+
+    const createdResp = await finternetJson(
+      `https://api.fmm.finternetlab.io/api/v1/payment-intents/${intentId}/escrow/milestones`,
+      {
+        method: "POST",
+        body: {
+          milestoneIndex: nextMilestoneIndex,
+          description: description || title,
+          amount: computedReleaseAmount.toString(),
+          percentage: computedReleasePercent,
+        },
+      },
+    );
+
+    const finternetMilestoneId = createdResp?.data?.id || createdResp?.id;
+    if (!finternetMilestoneId) {
+      return res.status(502).json({
+        success: false,
+        message: "Finternet milestone creation did not return an id",
+      });
+    }
+
+    await finternetJson(
+      `https://api.fmm.finternetlab.io/api/v1/payment-intents/${intentId}/escrow/milestones/${finternetMilestoneId}/complete`,
+      { method: "POST" },
+    );
+
     const milestone = new Milestone({
       pool: poolId,
       title,
       description,
       releasePercent: computedReleasePercent,
       releaseAmount: computedReleaseAmount,
+      finternetMilestoneId,
+      finternetCreatedAt: new Date(),
+      finternetCompletedAt: new Date(),
     });
 
     await milestone.save();
@@ -332,7 +410,9 @@ poolsRouter.post("/:poolId/milestones", userAuth, async (req, res) => {
       milestone,
     });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res
+      .status(err.status || 500)
+      .json({ success: false, message: err.message });
   }
 });
 
