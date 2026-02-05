@@ -255,12 +255,19 @@ poolsRouter.post("/:poolId/milestones", userAuth, async (req, res) => {
         .json({ success: false, message: "Pool not found" });
     }
 
-    // Verify user is the group admin
-    const group = await Group.findById(pool.group);
-    if (group.admin.toString() !== req.user._id.toString()) {
+    // Any authenticated group member (including admin) can create milestones.
+    const group = await Group.findById(pool.group).populate(
+      "participants.user",
+    );
+    if (!group) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Group not found" });
+    }
+    if (!isGroupMember(group, req.user._id)) {
       return res.status(403).json({
         success: false,
-        message: "Only group admin can create milestones",
+        message: "Only group members can create milestones",
       });
     }
 

@@ -22,7 +22,6 @@ export default function PoolManagement({ groupId }) {
   const [settlement, setSettlement] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [releasePercent, setreleasePercent] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
   // { [milestoneId]: { participantIds: string[], splitMethod: 'equal'|'exact'|'percent'|'shares', valuesByUser: Record<string,string> } }
@@ -420,7 +419,9 @@ export default function PoolManagement({ groupId }) {
           className="card bg-white shadow-xl border border-emerald-100"
         >
           <div className="card-body">
-            <h2 className="card-title text-2xl mb-6 text-slate-800">💰 Pool Management</h2>
+            <h2 className="card-title text-2xl mb-6 text-slate-800">
+              💰 Pool Management
+            </h2>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {/* Total Pool Amount */}
@@ -458,7 +459,9 @@ export default function PoolManagement({ groupId }) {
 
               {/* Locked Amount */}
               <div className="flex flex-col bg-white p-4 rounded-lg border border-emerald-100">
-                <span className="text-sm text-slate-600 font-semibold">Locked</span>
+                <span className="text-sm text-slate-600 font-semibold">
+                  Locked
+                </span>
                 <span className="text-3xl font-bold text-red-500 mt-2">
                   {(pool.totalAmount - (pool.releasedAmount || 0)).toFixed(2)}
                 </span>
@@ -526,11 +529,11 @@ export default function PoolManagement({ groupId }) {
                 <input
                   type="number"
                   min="0"
-                  max="100"
+                  step="0.01"
                   className="input input-bordered bg-slate-50 border-slate-300 focus:border-purple-500 focus:bg-white"
-                  placeholder="25"
-                  value={releasePercent}
-                  onChange={(e) => setReleasePercent(e.target.value)}
+                  placeholder="250"
+                  value={releaseAmount}
+                  onChange={(e) => setReleaseAmount(e.target.value)}
                   required
                 />
               </div>
@@ -622,14 +625,12 @@ export default function PoolManagement({ groupId }) {
 
                         <div className="flex flex-wrap gap-4 text-sm">
                           <span className="font-semibold text-purple-600 bg-purple-100 px-3 py-1 rounded-full">
-                            Release: {m.releasePercent}%
+                            Release:{" "}
+                            {m.releaseAmount !== undefined &&
+                            m.releaseAmount !== null
+                              ? m.releaseAmount
+                              : `${m.releasePercent}%`}
                           </span>
-                          {m.releasePercent !== undefined &&
-                            m.releasePercent !== null && (
-                              <span className="font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-full">
-                                ({m.releasePercent}%)
-                              </span>
-                            )}
                           {m.status === "COMPLETED" ? (
                             <span className="text-green-600 font-bold flex items-center gap-1 bg-green-100 px-3 py-1 rounded-full">
                               <FaCheckCircle /> Completed
@@ -720,16 +721,16 @@ export default function PoolManagement({ groupId }) {
             </div>
 
             <div className="overflow-x-auto mt-4">
-              <table className="table">
-                <thead>
+              <table className="table text-slate-700">
+                <thead className="text-slate-700 bg-slate-50">
                   <tr>
-                    <th>Member</th>
-                    <th>Contributed</th>
-                    <th>Spent</th>
-                    <th>Net</th>
+                    <th className="text-slate-700">Member</th>
+                    <th className="text-slate-700">Contributed</th>
+                    <th className="text-slate-700">Spent</th>
+                    <th className="text-slate-700">Net</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="text-slate-700">
                   {(settlement.members || []).map((m) => (
                     <tr key={m.userId}>
                       <td>

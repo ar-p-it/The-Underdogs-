@@ -5,7 +5,8 @@ import { createSlice } from "@reduxjs/toolkit";
 const initialState = {
   user: null,
   isAuthenticated: false,
-  loading: false,
+  // Start in loading state so route guards wait for hydration (/profile)
+  loading: true,
   error: null,
 };
 

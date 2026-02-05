@@ -1,9 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 
-export default function GroupPaymentFlow({ groupId, poolAmount, numParticipants }) {
+export default function GroupPaymentFlow({
+  groupId,
+  initialPoolAmount,
+  initialNumParticipants,
+}) {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [poolAmount, setPoolAmount] = useState("");
+  const [numParticipants, setNumParticipants] = useState("");
   const [paymentUrl, setPaymentUrl] = useState("");
   const [intentId, setIntentId] = useState("");
   const [error, setError] = useState("");
@@ -11,11 +17,29 @@ export default function GroupPaymentFlow({ groupId, poolAmount, numParticipants 
 
   const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:7777";
 
+  useEffect(() => {
+    if (initialPoolAmount !== undefined && initialPoolAmount !== null) {
+      setPoolAmount(String(initialPoolAmount));
+    }
+    if (
+      initialNumParticipants !== undefined &&
+      initialNumParticipants !== null
+    ) {
+      setNumParticipants(String(initialNumParticipants));
+    }
+    // only initialize once from props
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleCreateIntent = async () => {
-    const total = parseInt(poolAmount, 10);
-    const count = parseInt(numParticipants, 10);
-    if (!total || total <= 0 || !count || count <= 0) {
-      setError("Pool amount and participant count must be derived from expenses.");
+    const total = Number(poolAmount);
+    const count = Number(numParticipants);
+    if (!Number.isFinite(total) || total <= 0) {
+      setError("Please enter a valid total pool amount");
+      return;
+    }
+    if (!Number.isFinite(count) || count <= 0) {
+      setError("Please enter a valid number of participants");
       return;
     }
 
@@ -27,8 +51,8 @@ export default function GroupPaymentFlow({ groupId, poolAmount, numParticipants 
       const response = await axios.post(
         `${API_BASE}/groups/${groupId}/create-payment-intent`,
         {
-          totalAmount: total,
-          numParticipants: count,
+          totalAmount: Math.floor(total),
+          numParticipants: Math.floor(count),
           timestamp: Date.now(),
         },
         { withCredentials: true },
@@ -80,9 +104,9 @@ export default function GroupPaymentFlow({ groupId, poolAmount, numParticipants 
 
   const handleCreateNewIntent = () => {
     setStep(1);
+    setError("");
     setIntentId("");
     setPaymentUrl("");
-    setError("");
   };
 
   return (
@@ -91,17 +115,34 @@ export default function GroupPaymentFlow({ groupId, poolAmount, numParticipants 
     >
       <h2>🏊 Group Payment Pool</h2>
 
-      {/* Step 1: Create Intent (values derived from props) */}
+      {/* Step 1: Create Intent */}
       {step === 1 && (
         <div>
           <h3>Step 1: Initialize Payment Pool</h3>
           <div style={{ marginBottom: "10px" }}>
-            <strong>Total Pool Amount (derived): </strong>
-            <span style={{ marginLeft: 6 }}>{poolAmount}</span>
+            <label style={{ display: "block", marginBottom: 4 }}>
+              Total Pool Amount
+            </label>
+            <input
+              type="number"
+              value={poolAmount}
+              onChange={(e) => setPoolAmount(e.target.value)}
+              placeholder="e.g., 6000"
+              style={{ padding: "5px", width: "220px" }}
+            />
           </div>
+
           <div style={{ marginBottom: "10px" }}>
-            <strong>Number of Participants (derived): </strong>
-            <span style={{ marginLeft: 6 }}>{numParticipants}</span>
+            <label style={{ display: "block", marginBottom: 4 }}>
+              Number of Participants
+            </label>
+            <input
+              type="number"
+              value={numParticipants}
+              onChange={(e) => setNumParticipants(e.target.value)}
+              placeholder="e.g., 3"
+              style={{ padding: "5px", width: "220px" }}
+            />
           </div>
           {error && (
             <div style={{ color: "red", marginBottom: "10px" }}>{error}</div>

@@ -123,14 +123,7 @@ groupsRouter.post(
           .json({ success: false, message: "Group not found" });
       }
 
-      // Only admin can create payment intent
-      console.log("[CreateIntent] requester:", req.user._id.toString(), "group.admin:", group.admin.toString(), "groupId:", groupId);
-      if (group.admin.toString() !== req.user._id.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: "Only group admin can create payment intent",
-        });
-      }
+      // No role restriction: any authenticated user may create a payment intent.
 
       // Always create a new intent (don't reuse existing ones)
       const finalAmount = totalAmount || group.poolAmount;
@@ -530,11 +523,19 @@ groupsRouter.get("/summary/my", userAuth, async (req, res) => {
     const thisYear = now.getFullYear();
 
     for (const g of groups) {
-      const expenses = await Expense.find({ group: g._id }).select({ amount: 1, currency: 1, paidBy: 1, splits: 1, createdAt: 1 });
+      const expenses = await Expense.find({ group: g._id }).select({
+        amount: 1,
+        currency: 1,
+        paidBy: 1,
+        splits: 1,
+        createdAt: 1,
+      });
       for (const exp of expenses) {
         const amt = Number(exp.amount) || 0;
         const isPaidByUser = exp.paidBy?.toString?.() === userId;
-        const userSplit = (exp.splits || []).find((s) => s.user?.toString?.() === userId);
+        const userSplit = (exp.splits || []).find(
+          (s) => s.user?.toString?.() === userId,
+        );
         const splitAmt = Number(userSplit?.amount || 0);
         // net balance effect
         if (isPaidByUser) totalNet += amt;
@@ -548,12 +549,18 @@ groupsRouter.get("/summary/my", userAuth, async (req, res) => {
             if (d.getMonth() === thisMonth) monthlySpending += splitAmt;
           }
           // recent list
-          recent.push({ groupName: g.name, amount: splitAmt, currency: exp.currency || g.currency || "INR", date: d });
+          recent.push({
+            groupName: g.name,
+            amount: splitAmt,
+            currency: exp.currency || g.currency || "INR",
+            date: d,
+          });
         }
       }
     }
 
-    if (totalNet > 0) youAreOwed = totalNet; else youOwe = Math.abs(totalNet);
+    if (totalNet > 0) youAreOwed = totalNet;
+    else youOwe = Math.abs(totalNet);
 
     // Sort recent by date desc and limit to 5
     recent.sort((a, b) => b.date - a.date);
@@ -629,11 +636,15 @@ groupsRouter.post("/:groupId/create-milestone", userAuth, async (req, res) => {
         .json({ success: false, message: "Group not found" });
     }
 
-    // Only admin can create milestones
-    if (group.admin.toString() !== req.user._id.toString()) {
+    // Any group member (including admin) can create milestones
+    const isAdmin = group.admin.toString() === req.user._id.toString();
+    const isParticipant = (group.participants || []).some(
+      (p) => p.user.toString() === req.user._id.toString(),
+    );
+    if (!isAdmin && !isParticipant) {
       return res.status(403).json({
         success: false,
-        message: "Only admin can create milestones",
+        message: "Only group members can create milestones",
       });
     }
 
@@ -749,10 +760,15 @@ groupsRouter.get("/:groupId", userAuth, async (req, res) => {
     // Enforce membership visibility: only admin or participants can view group
     const isAdmin = group.admin.toString() === req.user._id.toString();
     const isParticipant = group.participants.some(
-      (p) => p.user._id?.toString?.() === req.user._id.toString() || p.user.toString?.() === req.user._id.toString(),
+      (p) =>
+        p.user._id?.toString?.() === req.user._id.toString() ||
+        p.user.toString?.() === req.user._id.toString(),
     );
     if (!isAdmin && !isParticipant) {
-      return res.status(403).json({ success: false, message: "Forbidden: not a member of this group" });
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden: not a member of this group",
+      });
     }
     res.json({ success: true, group });
   } catch (err) {
