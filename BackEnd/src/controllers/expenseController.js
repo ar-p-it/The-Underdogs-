@@ -1,6 +1,7 @@
 const Decimal = require('decimal.js');
 const Expense = require('../models/expense');
 const Group = require('../models/group');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 function computeSplits({ method, amount, participants, inputSplits }) {
   const total = new Decimal(amount);
@@ -116,6 +117,7 @@ exports.postExpense = async (req, res) => {
       paidBy: paidUser,
       splitMethod,
       splits: computedSplits,
+      bill: req.body.bill,
       status: 'approved',
       approvedBy: req.user._id,
     });
@@ -182,6 +184,71 @@ exports.getGroupBalances = async (req, res) => {
     const settlements = simplifyDebts(balances);
 
     res.json({ success: true, balances, settlements });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.analyzeReceipt = async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const group = await Group.findById(groupId);
+    if (!group) return res.status(404).json({ success: false, message: 'Group not found' });
+
+    const isMember = group.participants.some(p => (p.user?._id || p.user).toString() === req.user._id.toString());
+    if (!isMember) return res.status(403).json({ success: false, message: 'Not a participant of this group' });
+
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ success: false, message: 'No image provided' });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return res.status(500).json({ success: false, message: 'Missing GEMINI_API_KEY' });
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+
+    const base64Image = req.file.buffer.toString('base64');
+    const prompt = [
+      { text: 'You are an OCR and receipt parser. Extract structured data in strict JSON ONLY. No markdown, no backticks.' },
+      { text: 'Return keys: merchantName (string), amount (number), date (string ISO preferred), category (string), items (string[] optional).' },
+      { text: 'Infer category (Food, Travel, Utilities, etc.). Use numeric amount. Ensure valid JSON.' },
+    ];
+
+    const imagePart = {
+      inlineData: {
+        data: base64Image,
+        mimeType: req.file.mimetype || 'image/png',
+      },
+    };
+
+    const result = await model.generateContent([...prompt, imagePart]);
+    const text = result?.response?.text?.() || result?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    // Clean output: strip code fences/backticks and leading 'json'
+    const cleaned = text
+      .replace(/```json/gi, '')
+      .replace(/```/g, '')
+      .trim();
+    // Extract JSON block
+    const firstBrace = cleaned.indexOf('{');
+    const lastBrace = cleaned.lastIndexOf('}');
+    const jsonSlice = firstBrace >= 0 && lastBrace > firstBrace ? cleaned.slice(firstBrace, lastBrace + 1) : cleaned;
+
+    let data;
+    try {
+      data = JSON.parse(jsonSlice);
+    } catch (e) {
+      return res.status(500).json({ success: false, message: 'Failed to parse AI output', raw: cleaned });
+    }
+
+    // Basic normalization
+    if (typeof data.amount === 'string') {
+      const num = Number(data.amount.replace(/[^0-9.]/g, ''));
+      data.amount = isNaN(num) ? 0 : num;
+    }
+
+    res.json({ success: true, data });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

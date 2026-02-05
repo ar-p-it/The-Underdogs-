@@ -129,7 +129,7 @@ export default function GroupPaymentFlow({ groupId }) {
             disabled={loading}
             style={{
               padding: "10px 20px",
-              backgroundColor: loading ? "#ccc" : "#007bff",
+              backgroundColor: loading ? "#ccc" : "var(--color-emerald-600)",
               color: "white",
               border: "none",
               borderRadius: "4px",

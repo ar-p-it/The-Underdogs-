@@ -14,6 +14,7 @@ groupsRouter.use((req, _res, next) => {
   next();
 });
 const expenseController = require("../controllers/expenseController");
+const { upload } = require("../utils/upload");
 
 // 1. Create a new event/group
 groupsRouter.post("/", userAuth, async (req, res) => {
@@ -647,6 +648,14 @@ groupsRouter.get(
   "/:groupId/balances",
   userAuth,
   expenseController.getGroupBalances,
+);
+
+// OCR + Analyze receipt (multipart/form-data)
+groupsRouter.post(
+  "/:groupId/analyze-receipt",
+  userAuth,
+  upload.single("image"),
+  expenseController.analyzeReceipt,
 );
 
 // 5. Get a single group by id (with participants)
