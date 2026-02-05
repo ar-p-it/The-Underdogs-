@@ -45,6 +45,7 @@ export default function Sidebar() {
           <span className={`font-bold text-xl text-emerald-700 ${open || isDesktop ? 'inline' : 'hidden md:inline'}`}>Menu</span>
           <span className={`text-emerald-700 ${open || isDesktop ? 'hidden' : 'inline md:hidden'}`}>⋮</span>
         </div>
+        {/* <h2 className="text-xl font-bold mb-2">Menu</h2> */}
         <nav className="flex flex-col gap-2">
           <Link to="/dashboard" className={itemClass('/dashboard')} aria-label="Dashboard">
             <FiHome className="text-emerald-600 mr-2" />

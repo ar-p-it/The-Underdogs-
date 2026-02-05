@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { useSelector } from "react-redux";
 import { useParams } from "react-router-dom";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
@@ -11,8 +10,13 @@ import {
   FaReceipt,
   FaCheckCircle,
   FaWallet,
+  FaLightbulb,
+  FaShieldAlt,
 } from "react-icons/fa";
 import GroupPaymentFlow from "../components/GroupPaymentFlow";
+import ScanReceiptModal from "../components/ScanReceiptModal";
+import PoolManagement from "../components/PoolManagement";
+
 // --- Animation Variants ---
 const containerVar = {
   hidden: { opacity: 0 },
@@ -32,6 +36,11 @@ const listVar = {
   visible: { opacity: 1, x: 0 },
 };
 
+// NOTE: Our ESLint setup can miss usage of identifiers in JSX member expressions
+// (e.g. <motion.div />) and wrongly flags `motion` as unused.
+// This keeps the build/lint clean without changing runtime behavior.
+const _motion = motion;
+
 export default function GroupLedger() {
   const { groupId } = useParams();
   const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:7777";
@@ -50,76 +59,14 @@ export default function GroupLedger() {
   const [currency, setCurrency] = useState("INR");
   const [inputSplits, setInputSplits] = useState([]);
   const [activeTab, setActiveTab] = useState("expenses");
-  const [showPayModal, setShowPayModal] = useState(false);
+  const [showScan, setShowScan] = useState(false);
+
   // Refs for GSAP
   const submitBtnRef = useRef(null);
   const balanceRefs = useRef([]);
-
-  // Current user id from auth
-  const userId = useSelector((s) => s.auth?.user?._id);
+  const infoCardRef = useRef(null);
 
   const participants = useMemo(() => group?.participants || [], [group]);
-    // --- Derived totals for display ---
-    const totalExpenses = useMemo(
-      () => expenses.reduce((sum, e) => sum + (e?.amount || 0), 0),
-      [expenses],
-    );
-    const totalContributions = useMemo(
-      () => participants.reduce((sum, p) => sum + (p?.depositAmount || 0), 0),
-      [participants],
-    );
-    const poolTarget = useMemo(
-      () => ((group?.depositAmountPerPerson || 0) * (participants?.length || 0)),
-      [group?.depositAmountPerPerson, participants],
-    );
-    const remainingAfterExpenses = useMemo(
-      () => Math.max((poolTarget || 0) - (totalExpenses || 0), 0),
-      [poolTarget, totalExpenses],
-    );
-  const meParticipant = useMemo(() => {
-    if (!participants || !userId) return null;
-    return participants.find((p) => (p.user?._id || p.user) === userId) || null;
-  }, [participants, userId]);
-  const myBalance = useMemo(() => {
-    if (!balances || !userId) return null;
-    return balances.find((b) => (b.user?._id || b.user) === userId) || null;
-  }, [balances, userId]);
-  const myDueAmount = useMemo(() => {
-    const val = myBalance?.balance ?? 0;
-    return val < 0 ? Math.abs(val) : 0;
-  }, [myBalance]);
-  const myExpenseShare = useMemo(() => {
-    if (!expenses || !userId) return 0;
-    try {
-      return expenses.reduce((sum, exp) => {
-        const add = (exp.splits || []).reduce((inner, s) => {
-          const uid = (s.user?._id || s.user);
-          return String(uid) === String(userId) ? inner + (s.amount || 0) : inner;
-        }, 0);
-        return sum + add;
-      }, 0);
-    } catch (_) {
-      return 0;
-    }
-  }, [expenses, userId]);
-  const isAdmin = useMemo(() => {
-    const adminId = (group?.admin?._id || group?.admin);
-    return adminId && userId && String(adminId) === String(userId);
-  }, [group, userId]);
-
-  // Ensure all participants render in Net Balances (default 0 if missing)
-  const mergedBalances = useMemo(() => {
-    const byId = new Map(
-      (balances || []).map((b) => [
-        (b.user?._id || b.user)?.toString?.() || String(b.user),
-        b,
-      ]),
-    );
-    return (participants || []).map((p) => {
-      const pid = (p.user?._id || p.user)?.toString?.() || String(p.user);
-      return byId.get(pid) || { user: p.user, balance: 0 };
-    });
-  }, [balances, participants]);
 
   // --- Data Loading ---
   const loadAll = async () => {
@@ -182,6 +129,17 @@ export default function GroupLedger() {
       }
     });
   }, [balances]);
+
+  // --- GSAP Info Card Pop-in on Payment Tab ---
+  useEffect(() => {
+    if (activeTab === "payment" && infoCardRef.current) {
+      gsap.fromTo(
+        infoCardRef.current,
+        { opacity: 0, scale: 0.98, y: 10 },
+        { opacity: 1, scale: 1, y: 0, duration: 0.3, ease: "power2.out" },
+      );
+    }
+  }, [activeTab]);
 
   // --- Form Submission ---
   const onSubmit = async (e) => {
@@ -317,271 +275,10 @@ export default function GroupLedger() {
     );
   };
 
-  // --- Main Render ---
-  // return (
-  //   <div className="min-h-screen bg-slate-50 text-slate-800 pb-12">
-  //     {/* Header */}
-  //     <div className="bg-white border-b border-emerald-100 sticky top-0 z-20 shadow-sm">
-  //       <div className="container mx-auto px-4 py-4">
-  //         <motion.h1
-  //           initial={{ opacity: 0, y: -10 }}
-  //           animate={{ opacity: 1, y: 0 }}
-  //           className="text-2xl font-bold flex items-center gap-2 text-emerald-800"
-  //         >
-  //           <FaMoneyBillWave className="text-emerald-500" />
-  //           {group?.name || 'Group Ledger'}
-  //         </motion.h1>
-  //       </div>
-  //     </div>
-
-  //     <div className="container mx-auto px-4 py-8">
-  //       {loading && <div className="text-center text-emerald-600 animate-pulse">Loading details...</div>}
-  //       {error && <div className="alert alert-error mb-6 shadow-lg">{error}</div>}
-
-  //       {group && (
-  //         <motion.div
-  //           className="grid md:grid-cols-3 gap-8"
-  //           variants={containerVar}
-  //           initial="hidden"
-  //           animate="visible"
-  //         >
-
-  //           {/* LEFT COLUMN: ADD EXPENSE & HISTORY */}
-  //           <div className="md:col-span-2 space-y-8">
-
-  //             {/* Add Expense Card */}
-  //             <motion.div variants={itemVar} className="card bg-white shadow-xl shadow-emerald-100/50 border border-emerald-50 overflow-visible">
-  //               <div className="card-body">
-  //                 <h2 className="card-title text-xl text-slate-700 mb-4 flex items-center gap-2">
-  //                   <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
-  //                     <FaReceipt size={14} />
-  //                   </div>
-  //                   Add New Expense
-  //                 </h2>
-
-  //                 <form onSubmit={onSubmit} className="space-y-4">
-  //                   <div className="grid md:grid-cols-3 gap-4">
-
-  //                     {/* Amount */}
-  //                     <div className="form-control">
-  //                       <label className="label"><span className="label-text font-semibold">Total Amount</span></label>
-  //                       <div className="relative">
-  //                         <span className="absolute left-3 top-3.5 text-slate-400 text-sm">{currency}</span>
-  //                         <input
-  //                           type="number"
-  //                           className="input input-bordered w-full pl-12 bg-slate-50 border-slate-300 focus:border-emerald-500 focus:bg-white transition-colors"
-  //                           placeholder="0.00"
-  //                           value={amount}
-  //                           onChange={(e) => setAmount(e.target.value)}
-  //                           required
-  //                         />
-  //                       </div>
-  //                     </div>
-
-  //                     {/* Currency */}
-  //                     <div className="form-control">
-  //                       <label className="label"><span className="label-text font-semibold">Currency</span></label>
-  //                       <select className="select select-bordered w-full bg-white border-slate-300" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-  //                         <option>INR</option>
-  //                         <option>USD</option>
-  //                         <option>EUR</option>
-  //                       </select>
-  //                     </div>
-
-  //                     {/* Split Method */}
-  //                     <div className="form-control">
-  //                       <label className="label"><span className="label-text font-semibold">Split Method</span></label>
-  //                       <select className="select select-bordered w-full bg-white border-slate-300" value={splitMethod} onChange={(e) => setSplitMethod(e.target.value)}>
-  //                         <option value="equal">Equal Split</option>
-  //                         <option value="exact">Exact Amounts</option>
-  //                         <option value="percent">Percentages</option>
-  //                         <option value="shares">Shares</option>
-  //                       </select>
-  //                     </div>
-  //                   </div>
-
-  //                   {/* Dynamic Inputs Wrapper with Animation */}
-  //                   <div className="bg-white p-2 rounded-xl">
-  //                     <AnimatePresence mode="wait">
-  //                       <motion.div
-  //                         key={splitMethod}
-  //                         initial={{ opacity: 0, y: 10 }}
-  //                         animate={{ opacity: 1, y: 0 }}
-  //                         exit={{ opacity: 0, y: -10 }}
-  //                         transition={{ duration: 0.2 }}
-  //                       >
-  //                         {renderInputs()}
-  //                       </motion.div>
-  //                     </AnimatePresence>
-  //                   </div>
-
-  //                   {/* Submit Button */}
-  //                   <div className="flex justify-end pt-2">
-  //                     <button
-  //                       ref={submitBtnRef}
-  //                       type="submit"
-  //                       className="btn bg-emerald-500 hover:bg-emerald-600 text-white border-none px-8 text-lg shadow-lg shadow-emerald-200"
-  //                     >
-  //                       Add Expense
-  //                     </button>
-  //                   </div>
-  //                 </form>
-  //               </div>
-  //             </motion.div>
-
-  //             {/* Expense History List */}
-  //             <motion.div variants={itemVar} className="card bg-white shadow-lg border border-slate-100">
-  //               <div className="card-body">
-  //                 <h2 className="card-title text-slate-700 mb-4">Recent Activity</h2>
-  //                 <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-  //                   <AnimatePresence initial={false}>
-  //                     {expenses.map((exp) => (
-  //                       <motion.div
-  //                         key={exp._id}
-  //                         layout
-  //                         variants={listVar}
-  //                         initial="hidden"
-  //                         animate="visible"
-  //                         className="flex items-center justify-between p-4 bg-slate-50 hover:bg-emerald-50 rounded-xl border border-transparent hover:border-emerald-200 transition-colors group"
-  //                       >
-  //                         <div className="flex items-center gap-4">
-  //                           <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 group-hover:bg-emerald-500 group-hover:text-white transition-colors">
-  //                             <FaMoneyBillWave />
-  //                           </div>
-  //                           <div>
-  //                             <div className="font-bold text-slate-800 text-lg">
-  //                               {exp.amount} <span className="text-sm font-normal text-slate-500">{exp.currency}</span>
-  //                             </div>
-  //                             <div className="text-xs font-medium uppercase tracking-wider text-slate-400 bg-white px-2 py-0.5 rounded-full inline-block border border-slate-200 mt-1">
-  //                               {exp.splitMethod}
-  //                             </div>
-  //                           </div>
-  //                         </div>
-  //                         <div className="text-right">
-  //                            <div className="text-xs text-slate-400">
-  //                              {new Date(exp.createdAt).toLocaleDateString()}
-  //                            </div>
-  //                            <div className="text-xs text-slate-400">
-  //                              {new Date(exp.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-  //                            </div>
-  //                         </div>
-  //                       </motion.div>
-  //                     ))}
-  //                   </AnimatePresence>
-  //                   {expenses.length === 0 && (
-  //                     <div className="text-center py-10 text-slate-400 italic">No expenses recorded yet.</div>
-  //                   )}
-  //                 </div>
-  //               </div>
-  //             </motion.div>
-  //           </div>
-
-  //           {/* RIGHT COLUMN: BALANCES & SETTLEMENTS */}
-  //           <div className="space-y-8">
-
-  //             {/* Balances Card */}
-  //             <motion.div variants={itemVar} className="card bg-gradient-to-br from-emerald-600 to-emerald-800 text-white shadow-xl shadow-emerald-200">
-  //               <div className="card-body">
-  //                 <h2 className="card-title flex items-center gap-2 mb-4">
-  //                   <FaWallet className="text-emerald-200" /> Net Balances
-  //                 </h2>
-  //                 <div className="space-y-3">
-  //                   {balances.map((b, i) => (
-  //                     <div key={b.user._id || b.user} className="flex items-center justify-between bg-white/10 p-3 rounded-lg backdrop-blur-sm">
-  //                       <div className="flex items-center gap-2">
-  //                         <div className="avatar placeholder">
-  //                           <div className="bg-emerald-200 text-emerald-900 rounded-full w-8">
-  //                             <span className="text-xs font-bold">{(b.user.firstName || 'M')[0]}</span>
-  //                           </div>
-  //                         </div>
-  //                         <span className="font-medium">{b.user.firstName || 'Member'}</span>
-  //                       </div>
-  //                       <div className={`font-mono font-bold text-lg ${b.balance >= 0 ? 'text-emerald-200' : 'text-red-200'}`}>
-  //                         {b.balance >= 0 ? '+' : ''}
-  //                         {/* GSAP Target span */}
-  //                         <span ref={el => balanceRefs.current[i] = el}>0</span>
-  //                       </div>
-  //                     </div>
-  //                   ))}
-  //                   {balances.length === 0 && <div className="opacity-70 text-center text-sm">No balances calculated.</div>}
-  //                 </div>
-  //               </div>
-  //             </motion.div>
-
-  //             {/* Settlements Card */}
-  //             <motion.div variants={itemVar} className="card bg-white shadow-lg border border-slate-100">
-  //               <div className="card-body">
-  //                 <h2 className="card-title text-slate-700 flex items-center gap-2">
-  //                   <FaExchangeAlt className="text-emerald-500" /> Suggested Settlements
-  //                 </h2>
-  //                 <p className="text-xs text-slate-400 mb-4">The most efficient way to clear debts.</p>
-
-  //                 <div className="space-y-3">
-  //                   {settlements.map((s, i) => {
-  //                     const fromUser = s.from;
-  //                     const toUser = s.to;
-  //                     const key = `${fromUser?._id || fromUser}-${toUser?._id || toUser}-${s.amount}`;
-  //                     const fromName = `${fromUser?.firstName || 'Member'} ${fromUser?.lastName || ''}`.trim();
-  //                     const toName = `${toUser?.firstName || 'Member'} ${toUser?.lastName || ''}`.trim();
-  //                     return (
-  //                       <motion.div
-  //                         initial={{ opacity: 0, x: 20 }}
-  //                         animate={{ opacity: 1, x: 0 }}
-  //                         transition={{ delay: i * 0.1 }}
-  //                         key={key}
-  //                         className="flex items-center p-3 rounded-lg border border-slate-100 bg-slate-50"
-  //                       >
-  //                         <div className="flex-1 flex flex-col items-center">
-  //                           <span className="font-semibold text-slate-700 text-sm">{fromName}</span>
-  //                         </div>
-
-  //                         <div className="flex flex-col items-center px-2">
-  //                           <span className="text-emerald-600 font-bold text-sm bg-emerald-100 px-2 py-0.5 rounded">
-  //                             {s.amount}
-  //                           </span>
-  //                           <div className="h-[1px] w-full bg-slate-300 my-1 relative">
-  //                             <div className="absolute right-0 -top-1 w-0 h-0 border-t-[3px] border-t-transparent border-l-[6px] border-l-slate-300 border-b-[3px] border-b-transparent"></div>
-  //                           </div>
-  //                           <span className="text-[10px] uppercase text-slate-400">Pays</span>
-  //                         </div>
-
-  //                         <div className="flex-1 flex flex-col items-center">
-  //                           <span className="font-semibold text-slate-700 text-sm">{toName}</span>
-  //                         </div>
-  //                       </motion.div>
-  //                     );
-  //                   })}
-  //                   {settlements.length === 0 && <div className="text-center py-4 text-slate-400 text-sm">Everyone is settled up!</div>}
-  //                 </div>
-  //               </div>
-  //             </motion.div>
-
-  //             {/* Participants List (Mini) */}
-  //              <motion.div variants={itemVar} className="card bg-white shadow border border-slate-100">
-  //                 <div className="card-body py-4">
-  //                    <h3 className="font-bold text-sm text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
-  //                      <FaUsers /> Group Members
-  //                    </h3>
-  //                    <div className="flex -space-x-2 overflow-hidden py-1">
-  //                       {participants.map((p, i) => (
-  //                         <div key={i} className="inline-block h-8 w-8 rounded-full ring-2 ring-white bg-emerald-100 flex items-center justify-center text-xs font-bold text-emerald-800" title={p.user.emailId}>
-  //                            {(p.user.firstName || 'U')[0]}
-  //                         </div>
-  //                       ))}
-  //                    </div>
-  //                 </div>
-  //              </motion.div>
-  //           </div>
-
-  //         </motion.div>
-  //       )}
-  //     </div>
-  //   </div>
-  // );
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 pb-12">
       {/* Header */}
-      <div className="bg-white border-b border-emerald-100 sticky top-0 z-20 shadow-md">
+      <div className="bg-white border-b border-emerald-100 sticky top-0 z-20 shadow-sm">
         <div className="container mx-auto px-4 py-4">
           <motion.h1
             initial={{ opacity: 0, y: -10 }}
@@ -606,7 +303,7 @@ export default function GroupLedger() {
 
         {group && (
           <>
-            {/* TAB BUTTONS - NEW */}
+            {/* TAB BUTTONS */}
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -634,7 +331,7 @@ export default function GroupLedger() {
               </button>
             </motion.div>
 
-            {/* EXPENSES TAB - EXISTING CODE */}
+            {/* --- EXPENSES TAB (UNCHANGED) --- */}
             {activeTab === "expenses" && (
               <motion.div
                 className="grid md:grid-cols-3 gap-8"
@@ -647,9 +344,7 @@ export default function GroupLedger() {
                   {/* Add Expense Card */}
                   <motion.div
                     variants={itemVar}
-                    className="card bg-white shadow-xl shadow-emerald-100/50 hover:shadow-emerald-300/70 transition-shadow border border-emerald-50 overflow-visible"
-                    whileHover={{ y: -4, scale: 1.01 }}
-                    transition={{ type: 'spring', stiffness: 120, damping: 12 }}
+                    className="card bg-white shadow-xl shadow-emerald-100/50 border border-emerald-50 overflow-visible"
                   >
                     <div className="card-body">
                       <h2 className="card-title text-xl text-slate-700 mb-4 flex items-center gap-2">
@@ -657,6 +352,14 @@ export default function GroupLedger() {
                           <FaReceipt size={14} />
                         </div>
                         Add New Expense
+                        <div className="ml-auto">
+                          <button
+                            className="btn btn-sm bg-emerald-500 hover:bg-emerald-600 text-white border-none"
+                            onClick={() => setShowScan(true)}
+                          >
+                            <FaReceipt className="mr-1" /> Scan Receipt
+                          </button>
+                        </div>
                       </h2>
 
                       <form onSubmit={onSubmit} className="space-y-4">
@@ -741,7 +444,7 @@ export default function GroupLedger() {
                           <button
                             ref={submitBtnRef}
                             type="submit"
-                            className="btn bg-emerald-500 hover:bg-emerald-600 text-white border-none px-8 text-lg shadow-lg shadow-emerald-200 hover:shadow-emerald-300/80 transition-shadow"
+                            className="btn bg-emerald-500 hover:bg-emerald-600 text-white border-none px-8 text-lg shadow-lg shadow-emerald-200"
                           >
                             Add Expense
                           </button>
@@ -753,9 +456,7 @@ export default function GroupLedger() {
                   {/* Expense History List */}
                   <motion.div
                     variants={itemVar}
-                    className="card bg-white shadow-md hover:shadow-lg transition-shadow border border-slate-100"
-                    whileHover={{ y: -4, scale: 1.01 }}
-                    transition={{ type: 'spring', stiffness: 120, damping: 12 }}
+                    className="card bg-white shadow-lg border border-slate-100"
                   >
                     <div className="card-body">
                       <h2 className="card-title text-slate-700 mb-4">
@@ -817,31 +518,14 @@ export default function GroupLedger() {
                   {/* Balances Card */}
                   <motion.div
                     variants={itemVar}
-                    className="card bg-gradient-to-br from-emerald-600 to-emerald-800 text-white shadow-xl hover:shadow-emerald-300/80 shadow-emerald-200 transition-shadow"
-                    whileHover={{ scale: 1.005 }}
-                    transition={{ type: 'spring', stiffness: 120, damping: 14 }}
+                    className="card bg-gradient-to-br from-emerald-600 to-emerald-800 text-white shadow-xl shadow-emerald-200"
                   >
                     <div className="card-body">
                       <h2 className="card-title flex items-center gap-2 mb-4">
                         <FaWallet className="text-emerald-200" /> Net Balances
                       </h2>
-                      {/* Group totals summary */}
-                      <div className="grid grid-cols-3 gap-3 mb-4 text-sm">
-                        <div className="bg-white/10 p-3 rounded">
-                          <div className="opacity-80">Total Expenses</div>
-                          <div className="font-bold">{group?.currency || 'INR'} {totalExpenses}</div>
-                        </div>
-                        <div className="bg-white/10 p-3 rounded">
-                          <div className="opacity-80">Pool Target</div>
-                          <div className="font-bold">{group?.currency || 'INR'} {poolTarget}</div>
-                        </div>
-                        <div className="bg-white/10 p-3 rounded">
-                          <div className="opacity-80">Remaining</div>
-                          <div className="font-bold">{group?.currency || 'INR'} {remainingAfterExpenses}</div>
-                        </div>
-                      </div>
                       <div className="space-y-3">
-                        {mergedBalances.map((b, i) => (
+                        {balances.map((b, i) => (
                           <div
                             key={b.user._id || b.user}
                             className="flex items-center justify-between bg-white/10 p-3 rounded-lg backdrop-blur-sm"
@@ -868,7 +552,7 @@ export default function GroupLedger() {
                             </div>
                           </div>
                         ))}
-                        {mergedBalances.length === 0 && (
+                        {balances.length === 0 && (
                           <div className="opacity-70 text-center text-sm">
                             No balances calculated.
                           </div>
@@ -880,9 +564,7 @@ export default function GroupLedger() {
                   {/* Settlements Card */}
                   <motion.div
                     variants={itemVar}
-                    className="card bg-white shadow-md hover:shadow-lg transition-shadow border border-slate-100"
-                    whileHover={{ y: -4, scale: 1.01 }}
-                    transition={{ type: 'spring', stiffness: 120, damping: 12 }}
+                    className="card bg-white shadow-lg border border-slate-100"
                   >
                     <div className="card-body">
                       <h2 className="card-title text-slate-700 flex items-center gap-2">
@@ -946,8 +628,6 @@ export default function GroupLedger() {
                   <motion.div
                     variants={itemVar}
                     className="card bg-white shadow border border-slate-100"
-                    whileHover={{ y: -4, scale: 1.01 }}
-                    transition={{ type: 'spring', stiffness: 120, damping: 12 }}
                   >
                     <div className="card-body py-4">
                       <h3 className="font-bold text-sm text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
@@ -970,139 +650,105 @@ export default function GroupLedger() {
               </motion.div>
             )}
 
-            {/* PAYMENT POOL TAB - NEW */}
+            {/* --- PAYMENT POOL TAB (UPDATED) --- */}
             {activeTab === "payment" && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
-                className="grid md:grid-cols-3 gap-8"
+                className="space-y-8"
               >
-                {/* LEFT: Payment Flow Component (values derived from expenses & participants) */}
-                <div className="md:col-span-2">
-                  {/* Unified Pay button triggers modal choice */}
-                  <motion.div className="card bg-white shadow border border-slate-200" whileHover={{ y: -4, scale: 1.01 }} transition={{ type: 'spring', stiffness: 120, damping: 12 }}>
-                    {/* <div className="card-body"> */}
-                      {/* <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="card-title">Payment Pool</h3>
-                          <p className="text-sm text-slate-500">Proceed to pay via intent.</p>
-                          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                            <div className="bg-slate-50 border border-slate-200 rounded p-2">
-                              <div className="opacity-70">Your Expense Share (from expenses)</div>
-                              <div className="font-semibold">₹{(myExpenseShare || 0).toLocaleString()}</div>
-                            </div>
-                          </div>
-                        </div>
-                        <button
-                          className="btn btn-primary"
-                          onClick={() => setShowPayModal(true)}
-                          title={isAdmin ? undefined : "Only admin can create intents"}
-                        >
-                          Proceed to Pay
-                        </button>
-                      </div> */}
-                    {/* </div> */}
+                {/* Payment Flow Section */}
+                <div className="grid md:grid-cols-3 gap-8">
+                  {/* LEFT: Payment Flow Component */}
+                  <motion.div
+                    className="md:col-span-2"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                  >
+                    <GroupPaymentFlow groupId={groupId} />
                   </motion.div>
-                  {/* Keep original flow available below if needed */}
-                  <div className="mt-4">
-                    <GroupPaymentFlow
-                      groupId={groupId}
-                      poolAmount={expenses.reduce((sum, e) => sum + (e.amount || 0), 0)}
-                      numParticipants={(group?.participants || []).length}
-                    />
-                  </div>
+
+                  <motion.div
+                    variants={itemVar}
+                    ref={infoCardRef}
+                    className="card bg-gradient-to-br from-emerald-50 to-white border border-emerald-200 shadow-lg"
+                  >
+                    <div className="card-body">
+                      <h3 className="card-title text-emerald-900 mb-4 flex items-center gap-2">
+                        <FaLightbulb className="text-emerald-600" /> How It Works
+                      </h3>
+                      <ul className="space-y-3">
+                        {[
+                          "Set total pool amount & number of participants",
+                          "Create payment intent on blockchain",
+                          "Share payment URL with all members",
+                          "Create milestones for fund release",
+                          "Complete milestones to distribute funds",
+                        ].map((t, i) => (
+                          <InfoItem key={i} index={i} text={t} />
+                        ))}
+                      </ul>
+                    </div>
+                  </motion.div>
                 </div>
 
-                {/* RIGHT: Info Card */}
+                {/* Pool Management Section */}
                 <motion.div
-                  variants={itemVar}
-                  className="card bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 shadow-lg"
-                  whileHover={{ y: -4, scale: 1.01 }}
-                  transition={{ type: 'spring', stiffness: 120, damping: 12 }}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
                 >
-                  <div className="card-body">
-                    <h3 className="card-title text-blue-900 mb-4">
-                      💡 How It Works
-                    </h3>
-                    <ul className="space-y-3 text-sm text-blue-800">
-                      <li className="flex gap-2">
-                        <span className="font-bold text-blue-600">1.</span>
-                        <span>
-                          Set total pool amount & number of participants
-                        </span>
-                      </li>
-                      <li className="flex gap-2">
-                        <span className="font-bold text-blue-600">2.</span>
-                        <span>Create payment intent on blockchain</span>
-                      </li>
-                      <li className="flex gap-2">
-                        <span className="font-bold text-blue-600">3.</span>
-                        <span>Share payment URL with all members</span>
-                      </li>
-                      <li className="flex gap-2">
-                        <span className="font-bold text-blue-600">4.</span>
-                        <span>Create milestones for fund release</span>
-                      </li>
-                      <li className="flex gap-2">
-                        <span className="font-bold text-blue-600">5.</span>
-                        <span>Complete milestones to distribute funds</span>
-                      </li>
-                    </ul>
-                  </div>
+                  <PoolManagement groupId={groupId} />
                 </motion.div>
-
-                {/* Autopay Card removed */}
-
-                {/* Modal: Create Payment Intent */}
-                {showPayModal && (
-                  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-semibold">Complete Payment</h3>
-                        <button className="btn btn-sm" onClick={() => setShowPayModal(false)}>Close</button>
-                      </div>
-                      <div className="space-y-3 text-sm">
-                        <div className="flex justify-between">
-                          <span>Your expense share (from expenses)</span>
-                          <span className="font-medium">₹{(myExpenseShare || 0).toLocaleString()}</span>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-1 gap-3 mt-4">
-                        <button
-                          className="btn bg-indigo-600 hover:bg-indigo-700 text-white"
-                          disabled={!isAdmin}
-                          title={isAdmin ? undefined : "Only group admin can create payment intents"}
-                          onClick={async () => {
-                            if (!isAdmin) return;
-                            try {
-                              const total = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-                              const count = (group?.participants || []).length;
-                              const response = await axios.post(
-                                `${API_BASE}/groups/${groupId}/create-payment-intent`,
-                                { totalAmount: total, numParticipants: count, timestamp: Date.now() },
-                                { withCredentials: true }
-                              );
-                              if (response.data?.poolUrl) {
-                                window.open(response.data.poolUrl, '_blank');
-                              }
-                              setShowPayModal(false);
-                            } catch (e) {
-                              console.error(e);
-                            }
-                          }}
-                        >
-                          Create Payment Intent
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </motion.div>
             )}
+
+            {/* OCR Scan Modal */}
+            <ScanReceiptModal
+              open={showScan}
+              onClose={() => setShowScan(false)}
+              groupId={groupId}
+              groupCurrency={group?.currency || currency}
+              onExpenseCreated={() => {
+                // Refresh lists after expense creation via OCR
+                loadAll();
+              }}
+            />
           </>
         )}
       </div>
     </div>
+  );
+}
+
+// --- Helper Component for GSAP Animation on List Items ---
+function InfoItem({ index, text }) {
+  const itemRef = useRef(null);
+
+  // Simple GSAP hover effect
+  const handleMouseEnter = () => {
+    gsap.to(itemRef.current, { x: 5, color: "#059669", duration: 0.2 }); // #059669 is emerald-600
+  };
+
+  const handleMouseLeave = () => {
+    gsap.to(itemRef.current, { x: 0, color: "#1e293b", duration: 0.2 }); // #1e293b is slate-800
+  };
+
+  return (
+    <motion.li
+      ref={itemRef}
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: index * 0.1 }}
+      className="flex gap-3 text-sm text-slate-800 cursor-default"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      <span className="flex-shrink-0 font-bold text-emerald-500 bg-emerald-50 w-6 h-6 rounded-full flex items-center justify-center text-xs border border-emerald-100">
+        {index + 1}
+      </span>
+      <span className="leading-relaxed pt-0.5">{text}</span>
+    </motion.li>
   );
 }

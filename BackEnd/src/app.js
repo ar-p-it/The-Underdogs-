@@ -39,9 +39,11 @@ app.get("/", (req, res) => {
 
 const authRouter = require("./routes/auth");
 const groupsRouter = require("./routes/groups");
+const poolsRouter = require("./routes/pools");
 
 app.use("/", authRouter);
 app.use("/groups", groupsRouter);
+app.use("/pools", poolsRouter);
 
 // connect DB then start server
 connectDB()

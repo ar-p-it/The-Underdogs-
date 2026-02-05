@@ -5,6 +5,8 @@ const Group = require("../models/group");
 const User = require("../models/user");
 const Wallet = require("../models/wallet");
 const Expense = require("../models/expense");
+const Pool = require("../models/pool");
+const Milestone = require("../models/milestone");
 
 const groupsRouter = express.Router();
 // Debug logging to verify requests reach this router
@@ -13,6 +15,7 @@ groupsRouter.use((req, _res, next) => {
   next();
 });
 const expenseController = require("../controllers/expenseController");
+const { upload } = require("../utils/upload");
 
 // 1. Create a new event/group
 groupsRouter.post("/", userAuth, async (req, res) => {
@@ -72,6 +75,19 @@ groupsRouter.post("/", userAuth, async (req, res) => {
       status: "open",
       totals: { deposited: 0, spent: 0, remaining: 0 },
     });
+
+    // Create associated pool
+    const pool = await Pool.create({
+      group: group._id,
+      totalAmount: depositAmountPerPerson * 3,
+      currency: currency || "INR",
+      status: "ACTIVE",
+      settlementDestination: groupFinternetId,
+    });
+
+    // Update group with poolId
+    group.poolId = pool._id;
+    await group.save();
 
     // Link group to creator's user record
     await User.findByIdAndUpdate(req.user._id, {
@@ -707,6 +723,14 @@ groupsRouter.get(
   "/:groupId/balances",
   userAuth,
   expenseController.getGroupBalances,
+);
+
+// OCR + Analyze receipt (multipart/form-data)
+groupsRouter.post(
+  "/:groupId/analyze-receipt",
+  userAuth,
+  upload.single("image"),
+  expenseController.analyzeReceipt,
 );
 
 // 5. Get a single group by id (with participants)
