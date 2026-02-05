@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { SignOutButton } from '@clerk/clerk-react';
 import { useDispatch, useSelector } from "react-redux";
 import { motion, AnimatePresence } from 'framer-motion';
 import { gsap } from 'gsap';
+import axios from 'axios';
 
 import Sidebar from '../components/Sidebar';
 import CreateGroupModal from '../components/CreateGroupModal';
@@ -28,6 +29,16 @@ export default function Dashboard() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isJoinOpen, setIsJoinOpen] = useState(false);
   const [inviteInfo, setInviteInfo] = useState(null);
+  const userId = useSelector((s) => s.auth?.user?._id);
+  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:7777';
+
+  // User stats
+  const [totalBalance, setTotalBalance] = useState(0);
+  const [youAreOwed, setYouAreOwed] = useState(0);
+  const [youOwe, setYouOwe] = useState(0);
+  const [monthlySpending, setMonthlySpending] = useState(0);
+  const [yearlyTotal, setYearlyTotal] = useState(0);
+  const [recent, setRecent] = useState([]);
 
   // Refs for GSAP number animations
   const totalRef = useRef(null);
@@ -35,23 +46,34 @@ export default function Dashboard() {
   const oweRef = useRef(null);
 
   useEffect(() => {
-    // Example GSAP counter animation
-    // Even if values are 0, this creates a "loading" feel
+    // Optional animation retained for subtle transitions; values render directly below
     const tl = gsap.timeline();
-    tl.fromTo([totalRef.current, owedRef.current, oweRef.current], 
-      { innerText: 0 }, 
-      { 
-        innerText: (i) => [0, 0, 0][i], // Replace with real data values
-        duration: 1.5, 
-        snap: { innerText: 0.01 },
-        stagger: 0.2,
-        ease: "power3.out",
-        onUpdate: function() {
-          // Optional: format as currency during update
-        }
+    tl.to([totalRef.current, owedRef.current, oweRef.current], { duration: 0.2, opacity: 0.6 })
+      .to([totalRef.current, owedRef.current, oweRef.current], { duration: 0.2, opacity: 1.0 });
+  }, [totalBalance, youAreOwed, youOwe]);
+
+  useEffect(() => {
+    const loadUserStats = async () => {
+      try {
+        const res = await axios.get(`${API_BASE}/groups/summary/my`, { withCredentials: true });
+        const data = res.data || {};
+        setTotalBalance(Number((data.totalBalance ?? 0).toFixed?.(2) || data.totalBalance || 0));
+        setYouAreOwed(Number((data.youAreOwed ?? 0).toFixed?.(2) || data.youAreOwed || 0));
+        setYouOwe(Number((data.youOwe ?? 0).toFixed?.(2) || data.youOwe || 0));
+        setMonthlySpending(Number((data.monthlySpending ?? 0).toFixed?.(2) || data.monthlySpending || 0));
+        setYearlyTotal(Number((data.yearlyTotal ?? 0).toFixed?.(2) || data.yearlyTotal || 0));
+        setRecent((data.recent || []).map(r => ({ ...r, date: new Date(r.date) })));
+      } catch (_) {
+        // ignore for now
       }
-    );
-  }, []);
+    };
+
+    loadUserStats();
+    const refresh = () => loadUserStats();
+    window.addEventListener('groups:refresh', refresh);
+    return () => window.removeEventListener('groups:refresh', refresh);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [API_BASE]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex">
@@ -95,20 +117,23 @@ export default function Dashboard() {
         {/* Top Stats Row */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           {[
-            { label: "Total Balance", ref: totalRef, color: "text-emerald-950", sub: "All settled up!" },
-            { label: "You are owed", ref: owedRef, color: "text-emerald-600", sub: "+$0.00 this week" },
-            { label: "You owe", ref: oweRef, color: "text-orange-500", sub: "-$0.00 pending" }
+            { label: "Total Balance", value: totalBalance, ref: totalRef, color: "text-emerald-950", sub: "Across all groups" },
+            { label: "You are owed", value: youAreOwed, ref: owedRef, color: "text-emerald-600", sub: "Positive net across groups" },
+            { label: "You owe", value: youOwe, ref: oweRef, color: "text-orange-500", sub: "Outstanding dues across groups" }
           ].map((stat, idx) => (
-            <motion.div 
+             <motion.div 
               key={idx}
               variants={itemVariants}
-              whileHover={{ y: -5 }}
-              className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"
+              whileHover={{ y: -5, scale: 1.01 }}
+              transition={{ type: 'spring', stiffness: 120, damping: 12 }}
+              className="bg-white p-6 rounded-2xl shadow-md hover:shadow-lg transition-shadow border border-slate-100"
             >
               <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">{stat.label}</p>
               <div className="flex items-baseline gap-1 mt-2">
-                <span className={`text-3xl font-bold ${stat.color}`}>$</span>
-                <span ref={stat.ref} className={`text-3xl font-bold ${stat.color}`}>0.00</span>
+                <span className={`text-3xl font-bold ${stat.color}`}>₹</span>
+                <span ref={stat.ref} className={`text-3xl font-bold ${stat.color}`}>
+                  {Number(stat.value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
               </div>
               <p className="text-xs mt-2 text-slate-400 font-medium">{stat.sub}</p>
             </motion.div>
@@ -118,7 +143,7 @@ export default function Dashboard() {
         {/* Main Grid */}
         <div className="grid lg:grid-cols-3 gap-8">
           <motion.div variants={itemVariants} className="lg:col-span-2">
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <motion.div className="bg-white rounded-2xl shadow-md hover:shadow-lg transition-shadow border border-slate-100 overflow-hidden" whileHover={{ y: -4, scale: 1.01 }} transition={{ type: 'spring', stiffness: 120, damping: 12 }}>
               <div className="p-6 border-b border-slate-50 flex justify-between items-center">
                 <h2 className="text-xl font-bold text-emerald-950">Expense Summary</h2>
                 <select className="select select-ghost select-sm focus:bg-transparent">
@@ -127,31 +152,44 @@ export default function Dashboard() {
                 </select>
               </div>
               <div className="p-8 grid sm:grid-cols-2 gap-6">
-                <div className="p-6 rounded-2xl bg-emerald-50 border border-emerald-100">
+                <motion.div className="p-6 rounded-2xl bg-emerald-50 border border-emerald-100 shadow-sm hover:shadow-md transition-shadow" whileHover={{ y: -3, scale: 1.005 }} transition={{ type: 'spring', stiffness: 120, damping: 12 }}>
                   <p className="text-sm font-semibold text-emerald-700">Monthly Spending</p>
-                  <p className="text-3xl font-bold text-emerald-900 mt-1">$0.00</p>
-                </div>
-                <div className="p-6 rounded-2xl bg-slate-50 border border-slate-100">
+                  <p className="text-3xl font-bold text-emerald-900 mt-1">₹{Number(monthlySpending || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                </motion.div>
+                <motion.div className="p-6 rounded-2xl bg-slate-50 border border-slate-100 shadow-sm hover:shadow-md transition-shadow" whileHover={{ y: -3, scale: 1.005 }} transition={{ type: 'spring', stiffness: 120, damping: 12 }}>
                   <p className="text-sm font-semibold text-slate-600">Yearly Total</p>
-                  <p className="text-3xl font-bold text-slate-900 mt-1">$0.00</p>
-                </div>
+                  <p className="text-3xl font-bold text-slate-900 mt-1">₹{Number(yearlyTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                </motion.div>
               </div>
-            </div>
+            </motion.div>
           </motion.div>
 
           <motion.div variants={itemVariants} className="space-y-6">
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+            <motion.div className="bg-white p-6 rounded-2xl shadow-md hover:shadow-lg transition-shadow border border-slate-100" whileHover={{ y: -4, scale: 1.01 }} transition={{ type: 'spring', stiffness: 120, damping: 12 }}>
               <div className="flex items-center justify-between mb-6">
-                <h2 className="font-bold text-emerald-950">Balance Details</h2>
-                <button className="text-emerald-600 text-sm font-semibold hover:underline">View all</button>
+                <h2 className="font-bold text-emerald-950">Recent Activity</h2>
               </div>
-              <div className="flex flex-col items-center py-10 text-center">
-                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
-                  <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+              {recent.length === 0 ? (
+                <div className="flex flex-col items-center py-10 text-center">
+                  <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
+                    <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                  </div>
+                  <p className="text-slate-500 font-medium">No recent activity</p>
                 </div>
-                <p className="text-slate-500 font-medium">No recent activity</p>
-              </div>
-            </div>
+              ) : (
+                <ul className="space-y-3">
+                  {recent.map((r, i) => (
+                    <li key={i} className="flex items-center justify-between border border-slate-100 rounded-xl p-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-800">{r.groupName}</div>
+                        <div className="text-xs text-slate-500">{r.date.toLocaleDateString()} {r.currency || 'INR'}</div>
+                      </div>
+                      <div className="text-sm font-bold text-emerald-700">₹{Number(r.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </motion.div>
           </motion.div>
         </div>
       </motion.main>

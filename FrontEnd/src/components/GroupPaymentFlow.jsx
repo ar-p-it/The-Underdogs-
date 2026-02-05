@@ -1,11 +1,9 @@
 import { useState } from "react";
 import axios from "axios";
 
-export default function GroupPaymentFlow({ groupId }) {
+export default function GroupPaymentFlow({ groupId, poolAmount, numParticipants }) {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [poolAmount, setPoolAmount] = useState("");
-  const [numParticipants, setNumParticipants] = useState("");
   const [paymentUrl, setPaymentUrl] = useState("");
   const [intentId, setIntentId] = useState("");
   const [error, setError] = useState("");
@@ -13,8 +11,10 @@ export default function GroupPaymentFlow({ groupId }) {
   const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:7777";
 
   const handleCreateIntent = async () => {
-    if (!poolAmount || !numParticipants) {
-      setError("Please fill in all fields");
+    const total = parseInt(poolAmount, 10);
+    const count = parseInt(numParticipants, 10);
+    if (!total || total <= 0 || !count || count <= 0) {
+      setError("Pool amount and participant count must be derived from expenses.");
       return;
     }
 
@@ -26,9 +26,9 @@ export default function GroupPaymentFlow({ groupId }) {
       const response = await axios.post(
         `${API_BASE}/groups/${groupId}/create-payment-intent`,
         {
-          totalAmount: parseInt(poolAmount),
-          numParticipants: parseInt(numParticipants),
-          timestamp: Date.now(), // Force unique request each time
+          totalAmount: total,
+          numParticipants: count,
+          timestamp: Date.now(),
         },
         { withCredentials: true },
       );
@@ -46,10 +46,7 @@ export default function GroupPaymentFlow({ groupId }) {
   };
 
   const handleCreateNewIntent = () => {
-    // Reset all form fields and step
     setStep(1);
-    setPoolAmount("");
-    setNumParticipants("");
     setIntentId("");
     setPaymentUrl("");
     setError("");
@@ -61,36 +58,21 @@ export default function GroupPaymentFlow({ groupId }) {
     >
       <h2>🏊 Group Payment Pool</h2>
 
-      {/* Step 1: Create Intent */}
+      {/* Step 1: Create Intent (values derived from props) */}
       {step === 1 && (
         <div>
           <h3>Step 1: Initialize Payment Pool</h3>
           <div style={{ marginBottom: "10px" }}>
-            <label>Total Pool Amount (USDC): </label>
-            <input
-              type="number"
-              value={poolAmount}
-              onChange={(e) => setPoolAmount(e.target.value)}
-              placeholder="e.g., 6000"
-              style={{ padding: "5px", width: "200px" }}
-            />
+            <strong>Total Pool Amount (derived): </strong>
+            <span style={{ marginLeft: 6 }}>{poolAmount}</span>
           </div>
-
           <div style={{ marginBottom: "10px" }}>
-            <label>Number of Participants: </label>
-            <input
-              type="number"
-              value={numParticipants}
-              onChange={(e) => setNumParticipants(e.target.value)}
-              placeholder="e.g., 3"
-              style={{ padding: "5px", width: "200px" }}
-            />
+            <strong>Number of Participants (derived): </strong>
+            <span style={{ marginLeft: 6 }}>{numParticipants}</span>
           </div>
-
           {error && (
             <div style={{ color: "red", marginBottom: "10px" }}>{error}</div>
           )}
-
           <button
             onClick={handleCreateIntent}
             disabled={loading}

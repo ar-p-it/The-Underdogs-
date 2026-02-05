@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
+import { useSelector } from "react-redux";
 import { useParams } from "react-router-dom";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
@@ -49,11 +50,76 @@ export default function GroupLedger() {
   const [currency, setCurrency] = useState("INR");
   const [inputSplits, setInputSplits] = useState([]);
   const [activeTab, setActiveTab] = useState("expenses");
+  const [showPayModal, setShowPayModal] = useState(false);
   // Refs for GSAP
   const submitBtnRef = useRef(null);
   const balanceRefs = useRef([]);
 
+  // Current user id from auth
+  const userId = useSelector((s) => s.auth?.user?._id);
+
   const participants = useMemo(() => group?.participants || [], [group]);
+    // --- Derived totals for display ---
+    const totalExpenses = useMemo(
+      () => expenses.reduce((sum, e) => sum + (e?.amount || 0), 0),
+      [expenses],
+    );
+    const totalContributions = useMemo(
+      () => participants.reduce((sum, p) => sum + (p?.depositAmount || 0), 0),
+      [participants],
+    );
+    const poolTarget = useMemo(
+      () => ((group?.depositAmountPerPerson || 0) * (participants?.length || 0)),
+      [group?.depositAmountPerPerson, participants],
+    );
+    const remainingAfterExpenses = useMemo(
+      () => Math.max((poolTarget || 0) - (totalExpenses || 0), 0),
+      [poolTarget, totalExpenses],
+    );
+  const meParticipant = useMemo(() => {
+    if (!participants || !userId) return null;
+    return participants.find((p) => (p.user?._id || p.user) === userId) || null;
+  }, [participants, userId]);
+  const myBalance = useMemo(() => {
+    if (!balances || !userId) return null;
+    return balances.find((b) => (b.user?._id || b.user) === userId) || null;
+  }, [balances, userId]);
+  const myDueAmount = useMemo(() => {
+    const val = myBalance?.balance ?? 0;
+    return val < 0 ? Math.abs(val) : 0;
+  }, [myBalance]);
+  const myExpenseShare = useMemo(() => {
+    if (!expenses || !userId) return 0;
+    try {
+      return expenses.reduce((sum, exp) => {
+        const add = (exp.splits || []).reduce((inner, s) => {
+          const uid = (s.user?._id || s.user);
+          return String(uid) === String(userId) ? inner + (s.amount || 0) : inner;
+        }, 0);
+        return sum + add;
+      }, 0);
+    } catch (_) {
+      return 0;
+    }
+  }, [expenses, userId]);
+  const isAdmin = useMemo(() => {
+    const adminId = (group?.admin?._id || group?.admin);
+    return adminId && userId && String(adminId) === String(userId);
+  }, [group, userId]);
+
+  // Ensure all participants render in Net Balances (default 0 if missing)
+  const mergedBalances = useMemo(() => {
+    const byId = new Map(
+      (balances || []).map((b) => [
+        (b.user?._id || b.user)?.toString?.() || String(b.user),
+        b,
+      ]),
+    );
+    return (participants || []).map((p) => {
+      const pid = (p.user?._id || p.user)?.toString?.() || String(p.user);
+      return byId.get(pid) || { user: p.user, balance: 0 };
+    });
+  }, [balances, participants]);
 
   // --- Data Loading ---
   const loadAll = async () => {
@@ -515,7 +581,7 @@ export default function GroupLedger() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 pb-12">
       {/* Header */}
-      <div className="bg-white border-b border-emerald-100 sticky top-0 z-20 shadow-sm">
+      <div className="bg-white border-b border-emerald-100 sticky top-0 z-20 shadow-md">
         <div className="container mx-auto px-4 py-4">
           <motion.h1
             initial={{ opacity: 0, y: -10 }}
@@ -581,7 +647,9 @@ export default function GroupLedger() {
                   {/* Add Expense Card */}
                   <motion.div
                     variants={itemVar}
-                    className="card bg-white shadow-xl shadow-emerald-100/50 border border-emerald-50 overflow-visible"
+                    className="card bg-white shadow-xl shadow-emerald-100/50 hover:shadow-emerald-300/70 transition-shadow border border-emerald-50 overflow-visible"
+                    whileHover={{ y: -4, scale: 1.01 }}
+                    transition={{ type: 'spring', stiffness: 120, damping: 12 }}
                   >
                     <div className="card-body">
                       <h2 className="card-title text-xl text-slate-700 mb-4 flex items-center gap-2">
@@ -673,7 +741,7 @@ export default function GroupLedger() {
                           <button
                             ref={submitBtnRef}
                             type="submit"
-                            className="btn bg-emerald-500 hover:bg-emerald-600 text-white border-none px-8 text-lg shadow-lg shadow-emerald-200"
+                            className="btn bg-emerald-500 hover:bg-emerald-600 text-white border-none px-8 text-lg shadow-lg shadow-emerald-200 hover:shadow-emerald-300/80 transition-shadow"
                           >
                             Add Expense
                           </button>
@@ -685,7 +753,9 @@ export default function GroupLedger() {
                   {/* Expense History List */}
                   <motion.div
                     variants={itemVar}
-                    className="card bg-white shadow-lg border border-slate-100"
+                    className="card bg-white shadow-md hover:shadow-lg transition-shadow border border-slate-100"
+                    whileHover={{ y: -4, scale: 1.01 }}
+                    transition={{ type: 'spring', stiffness: 120, damping: 12 }}
                   >
                     <div className="card-body">
                       <h2 className="card-title text-slate-700 mb-4">
@@ -747,14 +817,31 @@ export default function GroupLedger() {
                   {/* Balances Card */}
                   <motion.div
                     variants={itemVar}
-                    className="card bg-gradient-to-br from-emerald-600 to-emerald-800 text-white shadow-xl shadow-emerald-200"
+                    className="card bg-gradient-to-br from-emerald-600 to-emerald-800 text-white shadow-xl hover:shadow-emerald-300/80 shadow-emerald-200 transition-shadow"
+                    whileHover={{ scale: 1.005 }}
+                    transition={{ type: 'spring', stiffness: 120, damping: 14 }}
                   >
                     <div className="card-body">
                       <h2 className="card-title flex items-center gap-2 mb-4">
                         <FaWallet className="text-emerald-200" /> Net Balances
                       </h2>
+                      {/* Group totals summary */}
+                      <div className="grid grid-cols-3 gap-3 mb-4 text-sm">
+                        <div className="bg-white/10 p-3 rounded">
+                          <div className="opacity-80">Total Expenses</div>
+                          <div className="font-bold">{group?.currency || 'INR'} {totalExpenses}</div>
+                        </div>
+                        <div className="bg-white/10 p-3 rounded">
+                          <div className="opacity-80">Pool Target</div>
+                          <div className="font-bold">{group?.currency || 'INR'} {poolTarget}</div>
+                        </div>
+                        <div className="bg-white/10 p-3 rounded">
+                          <div className="opacity-80">Remaining</div>
+                          <div className="font-bold">{group?.currency || 'INR'} {remainingAfterExpenses}</div>
+                        </div>
+                      </div>
                       <div className="space-y-3">
-                        {balances.map((b, i) => (
+                        {mergedBalances.map((b, i) => (
                           <div
                             key={b.user._id || b.user}
                             className="flex items-center justify-between bg-white/10 p-3 rounded-lg backdrop-blur-sm"
@@ -781,7 +868,7 @@ export default function GroupLedger() {
                             </div>
                           </div>
                         ))}
-                        {balances.length === 0 && (
+                        {mergedBalances.length === 0 && (
                           <div className="opacity-70 text-center text-sm">
                             No balances calculated.
                           </div>
@@ -793,7 +880,9 @@ export default function GroupLedger() {
                   {/* Settlements Card */}
                   <motion.div
                     variants={itemVar}
-                    className="card bg-white shadow-lg border border-slate-100"
+                    className="card bg-white shadow-md hover:shadow-lg transition-shadow border border-slate-100"
+                    whileHover={{ y: -4, scale: 1.01 }}
+                    transition={{ type: 'spring', stiffness: 120, damping: 12 }}
                   >
                     <div className="card-body">
                       <h2 className="card-title text-slate-700 flex items-center gap-2">
@@ -857,6 +946,8 @@ export default function GroupLedger() {
                   <motion.div
                     variants={itemVar}
                     className="card bg-white shadow border border-slate-100"
+                    whileHover={{ y: -4, scale: 1.01 }}
+                    transition={{ type: 'spring', stiffness: 120, damping: 12 }}
                   >
                     <div className="card-body py-4">
                       <h3 className="font-bold text-sm text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
@@ -887,15 +978,48 @@ export default function GroupLedger() {
                 exit={{ opacity: 0, y: -20 }}
                 className="grid md:grid-cols-3 gap-8"
               >
-                {/* LEFT: Payment Flow Component */}
+                {/* LEFT: Payment Flow Component (values derived from expenses & participants) */}
                 <div className="md:col-span-2">
-                  <GroupPaymentFlow groupId={groupId} />
+                  {/* Unified Pay button triggers modal choice */}
+                  <motion.div className="card bg-white shadow border border-slate-200" whileHover={{ y: -4, scale: 1.01 }} transition={{ type: 'spring', stiffness: 120, damping: 12 }}>
+                    {/* <div className="card-body"> */}
+                      {/* <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="card-title">Payment Pool</h3>
+                          <p className="text-sm text-slate-500">Proceed to pay via intent.</p>
+                          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                            <div className="bg-slate-50 border border-slate-200 rounded p-2">
+                              <div className="opacity-70">Your Expense Share (from expenses)</div>
+                              <div className="font-semibold">₹{(myExpenseShare || 0).toLocaleString()}</div>
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          className="btn btn-primary"
+                          onClick={() => setShowPayModal(true)}
+                          title={isAdmin ? undefined : "Only admin can create intents"}
+                        >
+                          Proceed to Pay
+                        </button>
+                      </div> */}
+                    {/* </div> */}
+                  </motion.div>
+                  {/* Keep original flow available below if needed */}
+                  <div className="mt-4">
+                    <GroupPaymentFlow
+                      groupId={groupId}
+                      poolAmount={expenses.reduce((sum, e) => sum + (e.amount || 0), 0)}
+                      numParticipants={(group?.participants || []).length}
+                    />
+                  </div>
                 </div>
 
                 {/* RIGHT: Info Card */}
                 <motion.div
                   variants={itemVar}
                   className="card bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 shadow-lg"
+                  whileHover={{ y: -4, scale: 1.01 }}
+                  transition={{ type: 'spring', stiffness: 120, damping: 12 }}
                 >
                   <div className="card-body">
                     <h3 className="card-title text-blue-900 mb-4">
@@ -927,6 +1051,53 @@ export default function GroupLedger() {
                     </ul>
                   </div>
                 </motion.div>
+
+                {/* Autopay Card removed */}
+
+                {/* Modal: Create Payment Intent */}
+                {showPayModal && (
+                  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold">Complete Payment</h3>
+                        <button className="btn btn-sm" onClick={() => setShowPayModal(false)}>Close</button>
+                      </div>
+                      <div className="space-y-3 text-sm">
+                        <div className="flex justify-between">
+                          <span>Your expense share (from expenses)</span>
+                          <span className="font-medium">₹{(myExpenseShare || 0).toLocaleString()}</span>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-1 gap-3 mt-4">
+                        <button
+                          className="btn bg-indigo-600 hover:bg-indigo-700 text-white"
+                          disabled={!isAdmin}
+                          title={isAdmin ? undefined : "Only group admin can create payment intents"}
+                          onClick={async () => {
+                            if (!isAdmin) return;
+                            try {
+                              const total = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+                              const count = (group?.participants || []).length;
+                              const response = await axios.post(
+                                `${API_BASE}/groups/${groupId}/create-payment-intent`,
+                                { totalAmount: total, numParticipants: count, timestamp: Date.now() },
+                                { withCredentials: true }
+                              );
+                              if (response.data?.poolUrl) {
+                                window.open(response.data.poolUrl, '_blank');
+                              }
+                              setShowPayModal(false);
+                            } catch (e) {
+                              console.error(e);
+                            }
+                          }}
+                        >
+                          Create Payment Intent
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </motion.div>
             )}
           </>

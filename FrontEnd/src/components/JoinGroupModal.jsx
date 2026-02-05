@@ -28,7 +28,13 @@ export default function JoinGroupModal({ open, onClose, onJoined }) {
     }
     setLoading(true);
     try {
-      const res = await axios.post(`${API_BASE}/groups/join`, { groupId }, { withCredentials: true });
+      const res = await axios.post(
+        `${API_BASE}/groups/join`,
+        {
+          groupId,
+        },
+        { withCredentials: true }
+      );
       onJoined?.(res.data?.group || res.data);
       onClose?.();
       setInviteLink('');

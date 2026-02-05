@@ -4,6 +4,7 @@ const { userAuth } = require("../middleware/adminAuth");
 const Group = require("../models/group");
 const User = require("../models/user");
 const Wallet = require("../models/wallet");
+const Expense = require("../models/expense");
 
 const groupsRouter = express.Router();
 // Debug logging to verify requests reach this router
@@ -107,6 +108,7 @@ groupsRouter.post(
       }
 
       // Only admin can create payment intent
+      console.log("[CreateIntent] requester:", req.user._id.toString(), "group.admin:", group.admin.toString(), "groupId:", groupId);
       if (group.admin.toString() !== req.user._id.toString()) {
         return res.status(403).json({
           success: false,
@@ -492,6 +494,69 @@ groupsRouter.get("/my", userAuth, async (req, res) => {
   }
 });
 
+// User summary across all joined/created groups
+groupsRouter.get("/summary/my", userAuth, async (req, res) => {
+  try {
+    const userId = req.user._id.toString();
+    const groups = await Group.find({
+      $or: [{ admin: userId }, { "participants.user": userId }],
+    }).select({ _id: 1, name: 1, currency: 1 });
+
+    let totalNet = 0;
+    let youAreOwed = 0;
+    let youOwe = 0;
+    let monthlySpending = 0;
+    let yearlyTotal = 0;
+    const recent = [];
+
+    const now = new Date();
+    const thisMonth = now.getMonth();
+    const thisYear = now.getFullYear();
+
+    for (const g of groups) {
+      const expenses = await Expense.find({ group: g._id }).select({ amount: 1, currency: 1, paidBy: 1, splits: 1, createdAt: 1 });
+      for (const exp of expenses) {
+        const amt = Number(exp.amount) || 0;
+        const isPaidByUser = exp.paidBy?.toString?.() === userId;
+        const userSplit = (exp.splits || []).find((s) => s.user?.toString?.() === userId);
+        const splitAmt = Number(userSplit?.amount || 0);
+        // net balance effect
+        if (isPaidByUser) totalNet += amt;
+        if (splitAmt > 0) totalNet -= splitAmt;
+
+        // monthly/yearly spending (based on user's split)
+        if (splitAmt > 0) {
+          const d = new Date(exp.createdAt);
+          if (d.getFullYear() === thisYear) {
+            yearlyTotal += splitAmt;
+            if (d.getMonth() === thisMonth) monthlySpending += splitAmt;
+          }
+          // recent list
+          recent.push({ groupName: g.name, amount: splitAmt, currency: exp.currency || g.currency || "INR", date: d });
+        }
+      }
+    }
+
+    if (totalNet > 0) youAreOwed = totalNet; else youOwe = Math.abs(totalNet);
+
+    // Sort recent by date desc and limit to 5
+    recent.sort((a, b) => b.date - a.date);
+    const topRecent = recent.slice(0, 5);
+
+    return res.json({
+      success: true,
+      totalBalance: Number(totalNet.toFixed(2)),
+      youAreOwed: Number(youAreOwed.toFixed(2)),
+      youOwe: Number(youOwe.toFixed(2)),
+      monthlySpending: Number(monthlySpending.toFixed(2)),
+      yearlyTotal: Number(yearlyTotal.toFixed(2)),
+      recent: topRecent,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // 3. Join a group by ID (from invite link)
 groupsRouter.post("/join", userAuth, async (req, res) => {
   try {
@@ -532,6 +597,8 @@ groupsRouter.post("/join", userAuth, async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
+// (Removed) Autopay endpoint
 
 // Create milestones for a group
 groupsRouter.post("/:groupId/create-milestone", userAuth, async (req, res) => {
@@ -655,6 +722,14 @@ groupsRouter.get("/:groupId", userAuth, async (req, res) => {
       return res
         .status(404)
         .json({ success: false, message: "Group not found" });
+    // Enforce membership visibility: only admin or participants can view group
+    const isAdmin = group.admin.toString() === req.user._id.toString();
+    const isParticipant = group.participants.some(
+      (p) => p.user._id?.toString?.() === req.user._id.toString() || p.user.toString?.() === req.user._id.toString(),
+    );
+    if (!isAdmin && !isParticipant) {
+      return res.status(403).json({ success: false, message: "Forbidden: not a member of this group" });
+    }
     res.json({ success: true, group });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
