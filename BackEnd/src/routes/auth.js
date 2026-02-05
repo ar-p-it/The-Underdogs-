@@ -114,7 +114,7 @@ authRouter.post("/login", async (req, res) => {
 authRouter.get("/profile", userAuth, async (req, resp) => {
   try {
     const userbyid = req.user;
-    console.log("Rigved");
+    // console.log("Rigved");
 
     // console.log(userbyid);
     resp.send(userbyid);
