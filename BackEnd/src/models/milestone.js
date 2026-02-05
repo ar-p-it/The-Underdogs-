@@ -1,6 +1,5 @@
 const mongoose = require("mongoose");
 
-
 const milestoneSchema = new mongoose.Schema(
   {
     pool: {
@@ -15,13 +14,13 @@ const milestoneSchema = new mongoose.Schema(
     description: String,
     releasePercent: {
       type: Number,
-      required: true,
       min: 0,
       max: 100,
     },
     releaseAmount: {
       type: Number,
-      default: 0,
+      required: true,
+      min: 0,
     },
     status: {
       type: String,
@@ -32,6 +31,10 @@ const milestoneSchema = new mongoose.Schema(
     completedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
+    },
+    expense: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "PoolExpense",
     },
   },
   { timestamps: true },

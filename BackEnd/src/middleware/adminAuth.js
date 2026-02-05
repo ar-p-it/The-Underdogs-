@@ -15,27 +15,35 @@ const User = require("../models/user");
 
 const userAuth = async (req, resp, next) => {
   try {
-    const cookies = req.cookies;
-    console.log(cookies);
-    const { token } = cookies;
+    const { token } = req.cookies || {};
     if (!token) {
-      throw new Error("No tokens Error");
+      return resp.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
     }
-    //validate the token
-    const decodedMessage = await jwt.verify(token, "Arpitttt");
-    console.log(decodedMessage);
+
+    // validate the token
+    const decodedMessage = jwt.verify(token, "Arpitttt");
     const { _id } = decodedMessage;
-    // console.log(_id);
-    const userbyid = await User.findById(_id);
+
+    const userbyid = await User.findById(_id).select("-password");
     if (!userbyid) {
-      throw new Error("No user");
+      return resp.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
     }
+
     req.user = userbyid;
     // console.log(userbyid);
     next();
     // resp.send(userbyid);
   } catch (err) {
-    resp.status(400).send("ERROR: " + err.message);
+    return resp.status(401).json({
+      success: false,
+      message: "Unauthorized",
+    });
   }
 };
 module.exports = {
