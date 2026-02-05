@@ -9,6 +9,7 @@ export default function GroupPaymentFlow({ groupId }) {
   const [paymentUrl, setPaymentUrl] = useState("");
   const [intentId, setIntentId] = useState("");
   const [error, setError] = useState("");
+  const [poolId, setPoolId] = useState(null);
 
   const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:7777";
 
@@ -42,6 +43,38 @@ export default function GroupPaymentFlow({ groupId }) {
       setError(err.response?.data?.message || "Failed to create intent");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePaymentSuccess = async () => {
+    try {
+      // Get pool by group ID
+      const poolRes = await axios.get(`${API_BASE}/pools/group/${groupId}`, {
+        withCredentials: true,
+      });
+
+      const pool = poolRes.data?.pool;
+      setPoolId(pool?._id);
+
+      // Add contribution to pool
+      if (pool?._id) {
+        await axios.post(
+          `${API_BASE}/pools/${pool._id}/contribute`,
+          {
+            amount: Number(poolAmount),
+            paymentIntentId: intentId,
+          },
+          { withCredentials: true },
+        );
+
+        console.log("[Frontend] Contribution recorded to pool");
+
+        // Dispatch event to notify pool management component
+        window.dispatchEvent(new CustomEvent("poolUpdated"));
+      }
+    } catch (err) {
+      console.error("[Frontend] Contribution error:", err);
+      // Don't block payment flow if contribution recording fails
     }
   };
 
@@ -145,7 +178,10 @@ export default function GroupPaymentFlow({ groupId }) {
           </div>
 
           <button
-            onClick={() => window.open(paymentUrl, "_blank")}
+            onClick={() => {
+              handlePaymentSuccess();
+              window.open(paymentUrl, "_blank");
+            }}
             style={{
               padding: "10px 20px",
               backgroundColor: "#28a745",

@@ -12,6 +12,7 @@ import {
   FaWallet,
 } from "react-icons/fa";
 import GroupPaymentFlow from "../components/GroupPaymentFlow";
+import PoolManagement from "../components/PoolManagement";
 // --- Animation Variants ---
 const containerVar = {
   hidden: { opacity: 0 },
@@ -885,47 +886,59 @@ export default function GroupLedger() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
-                className="grid md:grid-cols-3 gap-8"
+                className="space-y-8"
               >
-                {/* LEFT: Payment Flow Component */}
-                <div className="md:col-span-2">
-                  <GroupPaymentFlow groupId={groupId} />
+                {/* Payment Flow Section */}
+                <div className="grid md:grid-cols-3 gap-8">
+                  {/* LEFT: Payment Flow Component */}
+                  <div className="md:col-span-2">
+                    <GroupPaymentFlow groupId={groupId} />
+                  </div>
+
+                  {/* RIGHT: Info Card */}
+                  <motion.div
+                    variants={itemVar}
+                    className="card bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 shadow-lg"
+                  >
+                    <div className="card-body">
+                      <h3 className="card-title text-blue-900 mb-4">
+                        💡 How It Works
+                      </h3>
+                      <ul className="space-y-3 text-sm text-blue-800">
+                        <li className="flex gap-2">
+                          <span className="font-bold text-blue-600">1.</span>
+                          <span>
+                            Set total pool amount & number of participants
+                          </span>
+                        </li>
+                        <li className="flex gap-2">
+                          <span className="font-bold text-blue-600">2.</span>
+                          <span>Create payment intent on blockchain</span>
+                        </li>
+                        <li className="flex gap-2">
+                          <span className="font-bold text-blue-600">3.</span>
+                          <span>Share payment URL with all members</span>
+                        </li>
+                        <li className="flex gap-2">
+                          <span className="font-bold text-blue-600">4.</span>
+                          <span>Create milestones for fund release</span>
+                        </li>
+                        <li className="flex gap-2">
+                          <span className="font-bold text-blue-600">5.</span>
+                          <span>Complete milestones to distribute funds</span>
+                        </li>
+                      </ul>
+                    </div>
+                  </motion.div>
                 </div>
 
-                {/* RIGHT: Info Card */}
+                {/* Pool Management Section */}
                 <motion.div
-                  variants={itemVar}
-                  className="card bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 shadow-lg"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
                 >
-                  <div className="card-body">
-                    <h3 className="card-title text-blue-900 mb-4">
-                      💡 How It Works
-                    </h3>
-                    <ul className="space-y-3 text-sm text-blue-800">
-                      <li className="flex gap-2">
-                        <span className="font-bold text-blue-600">1.</span>
-                        <span>
-                          Set total pool amount & number of participants
-                        </span>
-                      </li>
-                      <li className="flex gap-2">
-                        <span className="font-bold text-blue-600">2.</span>
-                        <span>Create payment intent on blockchain</span>
-                      </li>
-                      <li className="flex gap-2">
-                        <span className="font-bold text-blue-600">3.</span>
-                        <span>Share payment URL with all members</span>
-                      </li>
-                      <li className="flex gap-2">
-                        <span className="font-bold text-blue-600">4.</span>
-                        <span>Create milestones for fund release</span>
-                      </li>
-                      <li className="flex gap-2">
-                        <span className="font-bold text-blue-600">5.</span>
-                        <span>Complete milestones to distribute funds</span>
-                      </li>
-                    </ul>
-                  </div>
+                  <PoolManagement groupId={groupId} />
                 </motion.div>
               </motion.div>
             )}

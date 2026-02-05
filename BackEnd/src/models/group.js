@@ -103,6 +103,13 @@ const groupSchema = new mongoose.Schema(
       description: "Total amount for the shared escrow pool",
     },
 
+    // Reference to Pool document
+    poolId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Pool",
+      sparse: true,
+    },
+
     paymentStatus: {
       type: String,
       enum: [

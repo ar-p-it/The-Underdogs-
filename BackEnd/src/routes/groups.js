@@ -4,6 +4,8 @@ const { userAuth } = require("../middleware/adminAuth");
 const Group = require("../models/group");
 const User = require("../models/user");
 const Wallet = require("../models/wallet");
+const Pool = require("../models/pool");
+const Milestone = require("../models/milestone");
 
 const groupsRouter = express.Router();
 // Debug logging to verify requests reach this router
@@ -72,6 +74,19 @@ groupsRouter.post("/", userAuth, async (req, res) => {
       totals: { deposited: 0, spent: 0, remaining: 0 },
     });
 
+    // Create associated pool
+    const pool = await Pool.create({
+      group: group._id,
+      totalAmount: depositAmountPerPerson * 3,
+      currency: currency || "INR",
+      status: "ACTIVE",
+      settlementDestination: groupFinternetId,
+    });
+
+    // Update group with poolId
+    group.poolId = pool._id;
+    await group.save();
+
     // Link group to creator's user record
     await User.findByIdAndUpdate(req.user._id, {
       $addToSet: { groups: group._id },
@@ -104,14 +119,6 @@ groupsRouter.post(
         return res
           .status(404)
           .json({ success: false, message: "Group not found" });
-      }
-
-      // Only admin can create payment intent
-      if (group.admin.toString() !== req.user._id.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: "Only group admin can create payment intent",
-        });
       }
 
       // Always create a new intent (don't reuse existing ones)
