@@ -6,7 +6,7 @@ export default function Sidebar() {
   return (
     <aside className="w-64 shrink-0 border-r bg-white">
       <div className="p-4">
-        <h2 className="text-xl font-bold mb-2">Menu</h2>
+        {/* <h2 className="text-xl font-bold mb-2">Menu</h2> */}
         <nav className="flex flex-col gap-2">
           <Link to="/dashboard" className={itemClass('/dashboard')}>Dashboard</Link>
           <Link to="/my-groups" className={itemClass('/my-groups')}>My Groups</Link>
